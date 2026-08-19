@@ -1242,7 +1242,9 @@ function bindEvents() {
     // triggerEvent payload has no documented accessor. Queries bind to the model; the
     // event just tells them when to run.
     state.searchJobId = Number(jobId) || jobId;
-    appsmith.updateModel({ ...model(), searchJobId: state.searchJobId, status: 'loading' });
+    // Only searchJobId — a key set through updateModel shadows the bound Default Model
+    // value, so writing `status` here would freeze the UI on whatever it was set to.
+    appsmith.updateModel({ ...model(), searchJobId: state.searchJobId });
     appsmith.triggerEvent('onSearch', { jobId });
   });
 

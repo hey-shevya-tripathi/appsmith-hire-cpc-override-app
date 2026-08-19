@@ -3,12 +3,12 @@
 -- Appsmith binding (keep "Use prepared statements" ON — the value then binds as a
 -- parameter rather than being pasted into the SQL string):
 --
---     WHERE h.job_id = {{ CpcOverrideTool.model.searchJobId }}::bigint
+--     WHERE h.job_id = {{ appsmith.store.cpc_job_id }}::bigint
 --
--- The widget writes `searchJobId` into its model when Search is pressed, and the
--- onSearch event triggers this query. `{{Widget.model.x}}` is the documented way to
--- read a value out of a custom widget; the triggerEvent payload has no documented
--- accessor, so don't bind to that.
+-- The ID goes through the Appsmith store, NOT `{{CpcOverrideTool.model.searchJobId}}`:
+-- binding to the widget model creates a cycle (query.body -> widget.model ->
+-- widget.defaultModel -> query.data), which Appsmith refuses to evaluate, silently.
+-- onSearch writes the store via storeValue() and then runs this query.
 --
 -- Notes on the WHERE clause:
 --   * `::bigint` — prepared-statement parameters arrive as text, and job_id is a bigint.
@@ -24,7 +24,7 @@ SELECT h.created_at,
        h.changed_by,
        h.change_type
 FROM backend_mkt.campaign_history_records h
-WHERE h.job_id = {{ CpcOverrideTool.model.searchJobId }}::bigint
+WHERE h.job_id = {{ appsmith.store.cpc_job_id }}::bigint
   AND h.cost_per_click_cents IS NOT NULL
   AND h.created_at >= DATEADD(day, -90, CURRENT_DATE)
 ORDER BY h.created_at DESC

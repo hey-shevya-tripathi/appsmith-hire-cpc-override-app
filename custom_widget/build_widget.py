@@ -125,19 +125,33 @@ def read_sources() -> dict[str, str]:
 Q_SOURCES = "cpc_all_sources_per_job"
 Q_HISTORY = "history"
 
-# Both queries run AUTOMATIC, so they re-run whenever `searchJobId` changes. onSearch
-# still calls .run() explicitly so pressing Search with an unchanged ID refetches.
-RUN_QUERIES = f"{{{{{Q_SOURCES}.run(); {Q_HISTORY}.run();}}}}"
+# The searched job ID travels through the Appsmith store, NOT through the widget model.
+#
+# The queries cannot read `CpcOverrideTool.model.searchJobId` while this widget's
+# defaultModel binds to those same queries — that is a dependency cycle
+# (query.body -> widget.model -> widget.defaultModel -> query.data) and Appsmith
+# refuses to evaluate any of it, so the app silently does nothing. The store breaks the
+# cycle: it is written imperatively from the event handler and nothing the widget
+# exposes depends on it.
+STORE_KEY = "cpc_job_id"
+
+# Writing the store re-triggers both AUTOMATIC queries; the explicit .run() afterwards
+# makes searching the *same* ID twice refetch, which a value-change trigger would skip.
+RUN_QUERIES = (
+    f"{{{{ storeValue('{STORE_KEY}', CpcOverrideTool.model.searchJobId)"
+    f".then(() => {{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}) }}}}"
+)
+REFRESH_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
 
 # The live Default Model: query bindings, not sample data.
 #
-# Nothing here may reference `CpcOverrideTool.model.*` — a widget's defaultModel cannot
-# read its own model without Appsmith flagging a circular dependency. That is why `job`
-# is absent (the widget falls back to the ID typed into its own search box) and why
-# `status` is derived purely from query state.
+# Nothing here may reference `CpcOverrideTool.model.*` — that is the cycle described
+# above. Referencing `appsmith.store` is safe. `job` is absent because neither query
+# returns job attributes; the widget falls back to the ID in its own search box.
 BOUND_MODEL: dict[str, Any] = {
     "status": (
-        f"{{{{ {Q_SOURCES}.isLoading || {Q_HISTORY}.isLoading ? 'loading'"
+        f"{{{{ !appsmith.store.{STORE_KEY} ? 'idle'"
+        f" : ({Q_SOURCES}.isLoading || {Q_HISTORY}.isLoading) ? 'loading'"
         f" : ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error) ? 'error'"
         f" : Array.isArray({Q_SOURCES}.data)"
         f" ? ({Q_SOURCES}.data.length ? 'ready' : 'empty')"
@@ -193,7 +207,7 @@ def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
         "widgetName": WIDGET_NAME,
     }
     # Read events fetch; the write events stay empty until the endpoints exist.
-    actions = {"onSearch": RUN_QUERIES, "onRefresh": RUN_QUERIES}
+    actions = {"onSearch": RUN_QUERIES, "onRefresh": REFRESH_QUERIES}
     for event in EVENTS:
         widget[event] = actions.get(event, "")
     return widget

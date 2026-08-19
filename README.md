@@ -64,15 +64,36 @@ Replace the sample values in the Default Model tab with query bindings:
 
 ```json
 {
-  "status": "{{Get_job.isLoading ? 'loading' : (Get_job.data ? 'ready' : 'idle')}}",
-  "error": "{{Get_job.responseMeta.error?.message || ''}}",
-  "job": "{{Get_job.data.job}}",
-  "rows": "{{Get_job.data.sources}}",
-  "history": "{{Get_history.data}}",
-  "limits": { "min_cents": 5, "max_cents": 800, "max_multiplier": 5 },
-  "toast": "{{appsmith.store.toast}}"
+  "status": "{{ !appsmith.store.cpc_job_id ? 'idle' : ... }}",
+  "error":  "{{ cpc_all_sources_per_job.responseMeta... }}",
+  "rows":    "{{ cpc_all_sources_per_job.data }}",
+  "history": "{{ history.data }}",
+  "limits": { "min_cents": 5, "max_cents": 300, "max_multiplier": 5 }
 }
 ```
+
+### The job ID must travel through the Appsmith store, not the model
+
+The obvious wiring — queries reading `{{CpcOverrideTool.model.searchJobId}}` — is a
+**dependency cycle** once the Default Model binds to those queries:
+
+```
+query.body -> CpcOverrideTool.model -> CpcOverrideTool.defaultModel -> query.data -> query.body
+```
+
+Appsmith refuses to evaluate a cycle, and fails silently: pressing Search does nothing
+at all, with no error. So the ID goes through the store instead, which is written
+imperatively and which nothing the widget exposes depends on:
+
+* queries bind `WHERE h.job_id = {{ appsmith.store.cpc_job_id }}::bigint`
+* `onSearch` = `{{ storeValue('cpc_job_id', CpcOverrideTool.model.searchJobId).then(() => { cpc_all_sources_per_job.run(); history.run(); }) }}`
+
+Two related traps, both already handled in the build script:
+
+* **Never bind `defaultModel` to `CpcOverrideTool.model.*`** — same cycle, same silence.
+* **A key written via `appsmith.updateModel()` shadows the bound Default Model value.**
+  The widget therefore only ever writes `searchJobId`; writing `status` there would
+  freeze the UI on whatever it was last set to.
 
 Field contract:
 
