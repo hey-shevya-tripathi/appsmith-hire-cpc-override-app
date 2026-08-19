@@ -72,44 +72,46 @@ Replace the sample values in the Default Model tab with query bindings:
 }
 ```
 
-### The job ID must travel through the Appsmith store, not the model
+### Default Model must be ONE expression string
 
-The obvious wiring — queries reading `{{CpcOverrideTool.model.searchJobId}}` — is a
-**dependency cycle** once the Default Model binds to those queries:
+This is the trap that cost the most time. `defaultModel` has to be a **single string**
+holding one `{{ ... }}` expression that evaluates to the whole model object:
 
 ```
-query.body -> CpcOverrideTool.model -> CpcOverrideTool.defaultModel -> query.data -> query.body
+{{
+  {
+    rows: cpc_all_sources_per_job.data || [],
+    history: history.data || [],
+    searchJobId: null,
+    status: ...
+  }
+}}
 ```
 
-Appsmith refuses to evaluate a cycle, and fails silently: pressing Search does nothing
-at all, with no error. So the ID goes through the store instead, which is written
-imperatively and which nothing the widget exposes depends on:
+**Not** a JSON object whose values contain bindings (`{"rows": "{{...}}"}`). Appsmith
+evaluates the property as one binding; hand it an object and it stores the inner
+`{{ ... }}` strings verbatim, so the widget receives them as literal text and renders
+nothing. There is no error — it just sits there.
 
-* queries bind `WHERE h.job_id = {{ appsmith.store.cpc_job_id }}::bigint`
-* `onSearch` = `{{ storeValue('cpc_job_id', CpcOverrideTool.model.searchJobId).then(() => { cpc_all_sources_per_job.run(); history.run(); }) }}`
+Declare `searchJobId: null` in that object so the key exists for the queries to bind to;
+the widget overwrites it with `appsmith.updateModel()`.
 
-Two related traps, both already handled in the build script:
+### Other conventions worth copying
 
-* **Never bind `defaultModel` to `CpcOverrideTool.model.*`** — same cycle, same silence.
-* **A key written via `appsmith.updateModel()` shadows the bound Default Model value.**
-  The widget therefore only ever writes `searchJobId`; writing `status` there would
-  freeze the UI on whatever it was last set to.
+These come from the REACH-job-checker app (`feat/ui-redesign`), which runs the same
+one-custom-widget architecture and is the reference for anything ambiguous here:
 
-Field contract:
-
-| Key | Shape |
-|---|---|
-| `status` | `'idle' \| 'loading' \| 'ready' \| 'error'` |
-| `job` | `{ job_id, job_title, company_name, city }` |
-| `rows[]` | `{ source, cost_per_click_cents, algorithmic_cpc_cents, is_override, changed_by, changed_at, source_campaign_status }` |
-| `history[]` | `{ created_at, source, cost_per_click_cents, changed_by, change_type, reason }` |
-| `limits` | `{ min_cents, max_cents, max_multiplier }` |
-| `toast` | `{ text, isError }` — optional, shown once |
-
-`rows` maps 1:1 onto `mkt_db.campaigns` columns (`source`, `cost_per_click_cents`,
-`source_campaign_status`); `history` maps onto `mkt_db.campaign_history_records`.
-All CPC values are **integer cents**; the UI does the €/cents conversion. `job_id` is a
-bigint (e.g. `34052274`), not a UUID.
+* **Queries binding to `{{CpcOverrideTool.model.searchJobId}}` is fine** even though
+  `defaultModel` binds back to those queries' data. That shape looks like a dependency
+  cycle but Appsmith resolves it.
+* **Never use a form element.** Custom widgets render in a sandboxed iframe without
+  `allow-forms`, so submission is blocked. Wire buttons with
+  `addEventListener('click', ...)` and handle Enter explicitly.
+* **Defer the event after `updateModel()`.** `updateModel` reaches the parent frame
+  asynchronously, so trigger the event in a `setTimeout(..., 40)` or the query may run
+  against the previous value.
+* **Guard the API**: `appsmith.triggerEvent && appsmith.triggerEvent(...)`.
+* Queries stay `MANUAL` and are run from event handlers.
 
 ## What the schema does and doesn't give us
 

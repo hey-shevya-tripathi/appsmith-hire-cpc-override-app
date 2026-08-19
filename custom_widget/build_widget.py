@@ -125,48 +125,39 @@ def read_sources() -> dict[str, str]:
 Q_SOURCES = "cpc_all_sources_per_job"
 Q_HISTORY = "history"
 
-# The searched job ID travels through the Appsmith store, NOT through the widget model.
-#
-# The queries cannot read `CpcOverrideTool.model.searchJobId` while this widget's
-# defaultModel binds to those same queries — that is a dependency cycle
-# (query.body -> widget.model -> widget.defaultModel -> query.data) and Appsmith
-# refuses to evaluate any of it, so the app silently does nothing. The store breaks the
-# cycle: it is written imperatively from the event handler and nothing the widget
-# exposes depends on it.
-STORE_KEY = "cpc_job_id"
+RUN_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
 
-# Writing the store re-triggers both AUTOMATIC queries; the explicit .run() afterwards
-# makes searching the *same* ID twice refetch, which a value-change trigger would skip.
-RUN_QUERIES = (
-    f"{{{{ storeValue('{STORE_KEY}', CpcOverrideTool.model.searchJobId)"
-    f".then(() => {{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}) }}}}"
-)
-REFRESH_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
-
-# The live Default Model: query bindings, not sample data.
+# The live Default Model.
 #
-# Nothing here may reference `CpcOverrideTool.model.*` — that is the cycle described
-# above. Referencing `appsmith.store` is safe. `job` is absent because neither query
-# returns job attributes; the widget falls back to the ID in its own search box.
-BOUND_MODEL: dict[str, Any] = {
-    "status": (
-        f"{{{{ !appsmith.store.{STORE_KEY} ? 'idle'"
-        f" : ({Q_SOURCES}.isLoading || {Q_HISTORY}.isLoading) ? 'loading'"
-        f" : ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error) ? 'error'"
-        f" : Array.isArray({Q_SOURCES}.data)"
-        f" ? ({Q_SOURCES}.data.length ? 'ready' : 'empty')"
-        f" : 'idle' }}}}"
-    ),
-    "error": (
-        f"{{{{ ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error"
-        f" && {Q_SOURCES}.responseMeta.error.message)"
-        f" || ({Q_HISTORY}.responseMeta && {Q_HISTORY}.responseMeta.error"
-        f" && {Q_HISTORY}.responseMeta.error.message) || '' }}}}"
-    ),
-    "rows": f"{{{{ {Q_SOURCES}.data }}}}",
-    "history": f"{{{{ {Q_HISTORY}.data }}}}",
-    "limits": {"min_cents": 5, "max_cents": 300, "max_multiplier": 5},
-}
+# This MUST be a single string holding one `{{ ... }}` expression that evaluates to the
+# whole model object — NOT a JSON object whose values happen to contain bindings.
+# Appsmith evaluates the property as one binding; given an object it stores the inner
+# "{{ ... }}" strings verbatim and the widget receives them as literal text.
+#
+# `searchJobId: null` declares the key so the queries can bind to
+# `CpcOverrideTool.model.searchJobId`; the widget overwrites it via updateModel().
+# `job` is absent because neither query returns job attributes — the widget falls back
+# to the ID typed into its own search box.
+BOUND_MODEL = f"""{{{{
+  {{
+    rows: {Q_SOURCES}.data || [],
+    history: {Q_HISTORY}.data || [],
+    searchJobId: null,
+    limits: {{ min_cents: 5, max_cents: 300, max_multiplier: 5 }},
+    status: ({Q_SOURCES}.isLoading || {Q_HISTORY}.isLoading)
+      ? 'loading'
+      : ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error)
+        ? 'error'
+        : Array.isArray({Q_SOURCES}.data)
+          ? ({Q_SOURCES}.data.length ? 'ready' : 'empty')
+          : 'idle',
+    error: ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error
+             && {Q_SOURCES}.responseMeta.error.message)
+        || ({Q_HISTORY}.responseMeta && {Q_HISTORY}.responseMeta.error
+             && {Q_HISTORY}.responseMeta.error.message)
+        || ''
+  }}
+}}}}"""
 
 
 def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
@@ -179,7 +170,15 @@ def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
         "bottomRow": 132,
         "boxShadow": "none",
         "defaultModel": BOUND_MODEL,
-        "dynamicBindingPathList": [{"key": "borderRadius"}, {"key": "defaultModel"}],
+        "dynamicBindingPathList": [
+            {"key": "theme"},
+            {"key": "borderRadius"},
+            {"key": "defaultModel"},
+        ],
+        "dynamicHeight": "FIXED",
+        "maxDynamicHeight": 9000,
+        "minDynamicHeight": 4,
+        "theme": "{{appsmith.theme}}",
         "dynamicTriggerPathList": [{"key": event} for event in EVENTS],
         "events": list(EVENTS),
         "isLoading": False,
@@ -207,7 +206,7 @@ def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
         "widgetName": WIDGET_NAME,
     }
     # Read events fetch; the write events stay empty until the endpoints exist.
-    actions = {"onSearch": RUN_QUERIES, "onRefresh": REFRESH_QUERIES}
+    actions = {"onSearch": RUN_QUERIES, "onRefresh": RUN_QUERIES}
     for event in EVENTS:
         widget[event] = actions.get(event, "")
     return widget

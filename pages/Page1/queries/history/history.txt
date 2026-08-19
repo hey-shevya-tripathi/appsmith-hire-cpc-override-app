@@ -4,7 +4,7 @@ SELECT h.created_at,
        h.changed_by,
        h.change_type
 FROM backend_mkt.campaign_history_records h
-WHERE h.job_id = {{ appsmith.store.cpc_job_id }}::bigint
+WHERE h.job_id = {{ CpcOverrideTool.model.searchJobId }}::bigint
   AND h.cost_per_click_cents IS NOT NULL
   --AND h.created_at >= DATEADD(day, -90, CURRENT_DATE)
 ORDER BY h.created_at DESC

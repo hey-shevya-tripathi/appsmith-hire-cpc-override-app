@@ -1244,10 +1244,21 @@ function submitSearch() {
   const jobId = $('search-input').value.trim();
   if (!jobId) return;
   state.searchJobId = Number(jobId) || jobId;
-  // Only searchJobId — a key set through updateModel shadows the bound Default Model
-  // value, so writing `status` here would freeze the UI on whatever it was set to.
-  appsmith.updateModel({ ...model(), searchJobId: state.searchJobId });
-  appsmith.triggerEvent('onSearch', { jobId: state.searchJobId });
+
+  // Write the ID into the model, which the queries bind to, then let Appsmith settle
+  // before triggering the fetch — updateModel propagates to the parent frame
+  // asynchronously, so firing the event in the same tick can run the queries against
+  // the previous ID.
+  try {
+    if (appsmith.updateModel) {
+      appsmith.updateModel({ ...model(), searchJobId: state.searchJobId });
+    }
+  } catch (err) {
+    console.error('updateModel failed', err);
+  }
+  setTimeout(() => {
+    if (appsmith.triggerEvent) appsmith.triggerEvent('onSearch', { jobId: state.searchJobId });
+  }, 40);
 }
 
 function bindEvents() {
