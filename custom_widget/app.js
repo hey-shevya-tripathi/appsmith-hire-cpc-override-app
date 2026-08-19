@@ -26,12 +26,29 @@ const $ = (id) => document.getElementById(id);
 
 const DEFAULT_LIMITS = { min_cents: 1, max_cents: 1000, max_multiplier: 5 };
 
+// Every automated writer seen in campaign_history_records.changed_by. Anything outside
+// this set is taken to be a person, which is how an override is detected — neither
+// mkt_db.campaigns nor the history table stores an explicit override flag.
+const PIPELINE_ACTORS = new Set([
+  'hire_budget_updates', 'reach_budget_updates', 'JobModelCallback',
+  'contract_group_excluded_sources_changed', 'contract_group_preference_cpc_changed',
+  'remote_campaign_update_callback', 'remote_campaign_creation_callback',
+  'remote_campaign_deletion_callback', 'remote_campaign_deactivate_callback',
+  'remote_campaign_activation_callback', 'linkedin_jobslot_campaign_update',
+  'sweep_unpublished_job_campaigns', 'SlaAutoResolveService', 'promote_to_hire',
+  'repost_as_reach', 'handle_job_contract_switch',
+]);
+
+// The pipeline whose value counts as "the algorithmic CPC" for a HIRE job.
+const ALGORITHMIC_ACTOR = 'hire_budget_updates';
+
 const state = {
   bound: false,
   filter: 'active',
   rows: [],
   job: null,
   limits: DEFAULT_LIMITS,
+  searchJobId: null, // last job ID submitted, mirrored into the model for the queries
   target: null,      // row being edited / reverted
   lastToast: null,
 };
@@ -46,6 +63,13 @@ function euro(cents) {
   if (cents === null || cents === undefined || cents === '') return '—';
   const n = Number(cents);
   return Number.isFinite(n) ? `€${(n / 100).toFixed(2)}` : '—';
+}
+
+/** Numeric cents, or null. Guards against Number(null) === 0 counting as a price. */
+function cents(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Escape user/API text before it goes into innerHTML. */
@@ -76,6 +100,49 @@ function deltaLabel(current, base) {
   return `<span class="delta ${cls}">${pct > 0 ? '+' : ''}${pct.toFixed(0)}%</span>`;
 }
 
+/* ── Deriving what the campaigns table doesn't store ─────── */
+
+/**
+ * `cpc_all_sources_per_job` reads mkt_db.campaigns, which holds a single CPC per source
+ * with no record of where it came from. Fill in who last touched each source, whether
+ * that was a person (an override), and the last value the HIRE pipeline itself wrote
+ * (the algorithmic baseline) by walking the history rows for the same job.
+ *
+ * Anything the row already carries wins, so a future API that returns these fields
+ * directly needs no change here.
+ */
+function enrichRows(rows, history) {
+  const latest = new Map();
+  const latestAlgorithmic = new Map();
+
+  history
+    .slice()
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .forEach((h) => {
+      latest.set(h.source, h);
+      if (h.changed_by === ALGORITHMIC_ACTOR) latestAlgorithmic.set(h.source, h);
+    });
+
+  return rows.map((row) => {
+    const last = latest.get(row.source);
+    const algorithmic = latestAlgorithmic.get(row.source);
+    const isOverride = row.is_override !== undefined
+      ? Boolean(row.is_override)
+      : Boolean(last && last.changed_by && !PIPELINE_ACTORS.has(last.changed_by));
+
+    return {
+      ...row,
+      is_override: isOverride,
+      changed_by: row.changed_by ?? last?.changed_by ?? null,
+      changed_at: row.changed_at ?? last?.created_at ?? row.updated_at ?? null,
+      algorithmic_cpc_cents: row.algorithmic_cpc_cents
+        ?? algorithmic?.cost_per_click_cents
+        // No pipeline write on record — the live value is the best baseline we have.
+        ?? row.cost_per_click_cents,
+    };
+  });
+}
+
 /* ── Rendering ───────────────────────────────────────────── */
 
 function renderState(status, error) {
@@ -84,14 +151,28 @@ function renderState(status, error) {
   $('result').hidden = showState;
   $('state-empty').hidden = status !== 'idle';
   $('state-loading').hidden = status !== 'loading';
+  $('state-empty-result').hidden = status !== 'empty';
   $('state-error').hidden = status !== 'error';
   if (status === 'error') $('state-error-text').textContent = error || 'Could not load this job.';
+  if (status === 'empty' && state.searchJobId) {
+    $('state-empty-result-text').textContent =
+      `Job ${state.searchJobId} has no campaigns with a CPC set. Check the job ID, or that it is a HIRE job.`;
+  }
 }
 
 function renderJob(job, rows) {
-  $('job-title').textContent = job.job_title || 'Untitled job';
-  $('job-company').textContent = job.company_name || '—';
-  $('job-city').textContent = job.city || '—';
+  // The queries return campaign rows, not job attributes — so unless something binds
+  // `job`, fall back to the ID the user searched for and drop the empty meta line.
+  const hasMeta = Boolean(job.job_title || job.company_name || job.city);
+  $('job-title').textContent =
+    job.job_title || (job.job_id ? `Job ${job.job_id}` : 'Untitled job');
+  $('job-company').textContent = job.company_name || '';
+  $('job-city').textContent = job.city || '';
+  $('job-company').hidden = !job.company_name;
+  $('job-city').hidden = !job.city;
+  document.querySelectorAll('.job-meta .dot').forEach((d, i) => {
+    d.hidden = !hasMeta || (i === 0 ? !job.company_name : !job.city);
+  });
   $('job-id').textContent = job.job_id || '—';
 
   const overrides = rows.filter((r) => r.is_override);
@@ -134,10 +215,9 @@ function rowHtml(row, idx) {
 
 /** A job carries 25+ source rows, most of them unpriced — filter to what's useful. */
 function matchesFilter(row) {
-  const priced = Number.isFinite(Number(row.cost_per_click_cents));
   switch (state.filter) {
     case 'override': return Boolean(row.is_override);
-    case 'priced': return priced;
+    case 'priced': return cents(row.cost_per_click_cents) !== null;
     case 'active': return row.source_campaign_status === 'active' || Boolean(row.is_override);
     default: return true;
   }
@@ -147,10 +227,10 @@ function matchesFilter(row) {
 function sortRows(rows) {
   return rows.slice().sort((a, b) => {
     if (Boolean(a.is_override) !== Boolean(b.is_override)) return a.is_override ? -1 : 1;
-    const av = Number(a.cost_per_click_cents);
-    const bv = Number(b.cost_per_click_cents);
-    if (Number.isFinite(av) !== Number.isFinite(bv)) return Number.isFinite(av) ? -1 : 1;
-    if (Number.isFinite(av) && av !== bv) return bv - av;
+    const av = cents(a.cost_per_click_cents);
+    const bv = cents(b.cost_per_click_cents);
+    if ((av === null) !== (bv === null)) return av === null ? 1 : -1;
+    if (av !== null && av !== bv) return bv - av;
     return String(a.source || '').localeCompare(String(b.source || ''));
   });
 }
@@ -209,17 +289,21 @@ function renderHistory(rawHistory) {
 }
 
 function render(m) {
-  state.rows = Array.isArray(m.rows) ? m.rows : [];
-  state.job = m.job || null;
+  const history = Array.isArray(m.history) ? m.history : [];
+  const rawRows = Array.isArray(m.rows) ? m.rows : [];
+
+  state.searchJobId = m.searchJobId ?? state.searchJobId;
+  state.rows = enrichRows(rawRows, history);
+  state.job = m.job || (state.searchJobId ? { job_id: state.searchJobId } : null);
   state.limits = limits();
 
-  const status = m.status || (state.job ? 'ready' : 'idle');
+  const status = m.status || (rawRows.length ? 'ready' : 'idle');
   renderState(status, m.error);
 
-  if (status === 'ready' && state.job) {
-    renderJob(state.job, state.rows);
+  if (status === 'ready') {
+    renderJob(state.job || {}, state.rows);
     renderRows();
-    renderHistory(Array.isArray(m.history) ? m.history : []);
+    renderHistory(history);
   } else {
     $('override-chip').textContent = '0 active overrides';
   }
@@ -374,7 +458,8 @@ function bindEvents() {
     // the documented way for queries to read a value out of a custom widget, whereas the
     // triggerEvent payload has no documented accessor. Queries bind to the model; the
     // event just tells them when to run.
-    appsmith.updateModel({ ...model(), searchJobId: Number(jobId) || jobId });
+    state.searchJobId = Number(jobId) || jobId;
+    appsmith.updateModel({ ...model(), searchJobId: state.searchJobId, status: 'loading' });
     appsmith.triggerEvent('onSearch', { jobId });
   });
 

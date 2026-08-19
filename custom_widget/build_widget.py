@@ -121,6 +121,40 @@ def read_sources() -> dict[str, str]:
     }
 
 
+# Names of the Appsmith queries this widget is wired to.
+Q_SOURCES = "cpc_all_sources_per_job"
+Q_HISTORY = "history"
+
+# Both queries run AUTOMATIC, so they re-run whenever `searchJobId` changes. onSearch
+# still calls .run() explicitly so pressing Search with an unchanged ID refetches.
+RUN_QUERIES = f"{{{{{Q_SOURCES}.run(); {Q_HISTORY}.run();}}}}"
+
+# The live Default Model: query bindings, not sample data.
+#
+# Nothing here may reference `CpcOverrideTool.model.*` — a widget's defaultModel cannot
+# read its own model without Appsmith flagging a circular dependency. That is why `job`
+# is absent (the widget falls back to the ID typed into its own search box) and why
+# `status` is derived purely from query state.
+BOUND_MODEL: dict[str, Any] = {
+    "status": (
+        f"{{{{ {Q_SOURCES}.isLoading || {Q_HISTORY}.isLoading ? 'loading'"
+        f" : ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error) ? 'error'"
+        f" : Array.isArray({Q_SOURCES}.data)"
+        f" ? ({Q_SOURCES}.data.length ? 'ready' : 'empty')"
+        f" : 'idle' }}}}"
+    ),
+    "error": (
+        f"{{{{ ({Q_SOURCES}.responseMeta && {Q_SOURCES}.responseMeta.error"
+        f" && {Q_SOURCES}.responseMeta.error.message)"
+        f" || ({Q_HISTORY}.responseMeta && {Q_HISTORY}.responseMeta.error"
+        f" && {Q_HISTORY}.responseMeta.error.message) || '' }}}}"
+    ),
+    "rows": f"{{{{ {Q_SOURCES}.data }}}}",
+    "history": f"{{{{ {Q_HISTORY}.data }}}}",
+    "limits": {"min_cents": 5, "max_cents": 300, "max_multiplier": 5},
+}
+
+
 def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
     """Assemble the CUSTOM_WIDGET DSL node for the Appsmith page."""
     widget: dict[str, Any] = {
@@ -130,8 +164,8 @@ def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
         "borderWidth": "0",
         "bottomRow": 132,
         "boxShadow": "none",
-        "defaultModel": MOCK_MODEL,
-        "dynamicBindingPathList": [{"key": "borderRadius"}],
+        "defaultModel": BOUND_MODEL,
+        "dynamicBindingPathList": [{"key": "borderRadius"}, {"key": "defaultModel"}],
         "dynamicTriggerPathList": [{"key": event} for event in EVENTS],
         "events": list(EVENTS),
         "isLoading": False,
@@ -158,9 +192,10 @@ def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
         "widgetId": "cpcoverride1",
         "widgetName": WIDGET_NAME,
     }
-    # Each declared event needs an (initially empty) action property.
+    # Read events fetch; the write events stay empty until the endpoints exist.
+    actions = {"onSearch": RUN_QUERIES, "onRefresh": RUN_QUERIES}
     for event in EVENTS:
-        widget[event] = ""
+        widget[event] = actions.get(event, "")
     return widget
 
 
