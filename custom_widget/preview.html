@@ -1145,7 +1145,13 @@ function bindEvents() {
   $('search-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const jobId = $('search-input').value.trim();
-    if (jobId) appsmith.triggerEvent('onSearch', { jobId });
+    if (!jobId) return;
+    // Publish to the model *before* firing the event: `{{Widget.model.searchJobId}}` is
+    // the documented way for queries to read a value out of a custom widget, whereas the
+    // triggerEvent payload has no documented accessor. Queries bind to the model; the
+    // event just tells them when to run.
+    appsmith.updateModel({ ...model(), searchJobId: Number(jobId) || jobId });
+    appsmith.triggerEvent('onSearch', { jobId });
   });
 
   $('filter-status').addEventListener('change', (e) => {
