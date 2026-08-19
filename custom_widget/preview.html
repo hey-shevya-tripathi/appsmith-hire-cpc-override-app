@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HIRE CPC Override Tool — local preview</title>
+<style>
+/* HIRE CPC Override Tool — Appsmith custom widget styles
+   Accent follows the HeyJobs brand token "Cosmo" (#d02879). */
+
+:root {
+  --accent: #d02879;
+  --accent-dark: #b01f65;
+  --accent-soft: #fdeaf3;
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --text: #14181f;
+  --muted: #6b7280;
+  --muted-soft: #9ca3af;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --surface-subtle: #fafbfc;
+
+  --ok: #0f7b52;
+  --warn: #a35b00;
+  --warn-soft: #fdf2e2;
+  --danger: #b42318;
+  --danger-soft: #fdeceb;
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
+  --shadow-lg: 0 24px 48px -12px rgba(16, 24, 40, .22);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body, .app {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* ── Header ──────────────────────────────────────────────── */
+.hdr { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.hdr-left { display: flex; align-items: center; gap: 12px; }
+.title { font-size: 21px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+.chip {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 4px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.hdr-right { display: flex; gap: 8px; }
+
+/* ── Cards ───────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+}
+#result > .card + .card { margin-top: 16px; }
+.card-hdr { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+.section-title { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -.005em; }
+.muted { color: var(--muted); font-size: 12px; }
+
+/* ── Search ──────────────────────────────────────────────── */
+.search { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.field-grow { flex: 1 1 280px; }
+.search .btn { height: 38px; }
+
+/* ── Fields ──────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.search .field { margin-bottom: 0; }
+.field > span { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .01em; }
+.req { color: var(--accent); font-weight: 700; }
+
+.input-wrap { position: relative; display: flex; align-items: center; }
+.input-ico { position: absolute; left: 12px; font-size: 13px; color: var(--muted-soft); pointer-events: none; }
+.input-wrap input { padding-left: 32px; }
+
+input, select, textarea {
+  width: 100%; height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font: inherit; color: var(--text); background: var(--card);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+textarea { height: auto; resize: vertical; line-height: 1.5; }
+select { cursor: pointer; }
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(208, 40, 121, .12);
+}
+input::placeholder, textarea::placeholder { color: var(--muted-soft); }
+input:disabled { background: var(--surface-subtle); color: var(--muted); cursor: not-allowed; }
+
+.hint { font-size: 11.5px; color: var(--muted); }
+.hint.is-error { color: var(--danger); font-weight: 500; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font: inherit; font-weight: 600; font-size: 13.5px;
+  padding: 9px 16px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-ico { font-size: 14px; line-height: 1; }
+.btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
+.btn-ghost { background: var(--card); color: var(--text); border-color: var(--border-strong); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-subtle); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #96190f; }
+.btn-sm { padding: 5px 11px; font-size: 12.5px; border-radius: 6px; }
+.btn-link {
+  background: none; border: none; padding: 5px 8px;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); cursor: pointer; border-radius: 6px;
+}
+.btn-link:hover { color: var(--text); background: var(--surface-subtle); }
+
+.icon-btn {
+  position: absolute; top: 16px; right: 16px;
+  width: 30px; height: 30px; border-radius: 6px;
+  background: transparent; border: none; cursor: pointer;
+  font-size: 14px; color: var(--muted);
+}
+.icon-btn:hover { background: #f3f4f6; color: var(--text); }
+
+/* ── States ──────────────────────────────────────────────── */
+.state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; text-align: center; }
+.state-ico { font-size: 30px; color: var(--muted-soft); line-height: 1; }
+.state-ico-warn { color: var(--warn); }
+.state-title { font-size: 15px; font-weight: 650; margin: 0; }
+.state-text { color: var(--muted); font-size: 13px; margin: 0; max-width: 380px; }
+
+.spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2.5px solid var(--border); border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Job card ────────────────────────────────────────────── */
+.job-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+.job-title { font-size: 17px; font-weight: 650; margin: 0 0 4px; letter-spacing: -.01em; }
+.job-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; color: var(--muted); font-size: 13px; }
+.dot { color: var(--border-strong); }
+.code {
+  font-family: var(--mono); font-size: 11.5px;
+  background: var(--surface-subtle); border: 1px solid var(--border);
+  padding: 2px 6px; border-radius: 5px; color: var(--muted);
+}
+
+.job-stats { display: flex; gap: 28px; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stat-value { font-size: 20px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.stat-accent { color: var(--accent); }
+
+/* ── Table ───────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; margin: 0 -20px -20px; }
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl thead th {
+  text-align: left; padding: 10px 16px;
+  font-size: 11px; font-weight: 650; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  background: var(--surface-subtle);
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.tbl thead th:first-child, .tbl tbody td:first-child { padding-left: 20px; }
+.tbl thead th:last-child, .tbl tbody td:last-child { padding-right: 20px; }
+.tbl tbody td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl tbody tr:hover { background: var(--surface-subtle); }
+.tbl-compact tbody td { padding: 10px 16px; font-size: 13px; }
+
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl .right { text-align: right; }
+.cpc { font-weight: 650; font-variant-numeric: tabular-nums; }
+.cpc-muted { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.cpc-override { color: var(--accent); }
+
+.src-name { font-weight: 600; }
+.stamp { display: flex; flex-direction: column; gap: 1px; }
+.stamp-who { font-size: 13px; }
+.stamp-when { font-size: 11.5px; color: var(--muted); }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.table-empty { padding: 32px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ── Badges ──────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 650; white-space: nowrap;
+}
+.badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.badge-algo { background: var(--surface-subtle); color: var(--muted); border: 1px solid var(--border); }
+.badge-override { background: var(--accent-soft); color: var(--accent); }
+
+.delta { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.delta-up { color: var(--ok); }
+.delta-down { color: var(--danger); }
+
+/* ── Modal ───────────────────────────────────────────────── */
+.modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(16, 24, 40, .45);
+  display: none; align-items: center; justify-content: center; padding: 24px;
+}
+.modal.is-open { display: flex; animation: fade-in .15s ease; }
+.modal-box {
+  position: relative;
+  background: var(--card); border-radius: var(--radius);
+  padding: 28px; width: 100%; max-width: 520px;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: pop-in .18s cubic-bezier(.2, .8, .3, 1);
+}
+.modal-box-sm { max-width: 440px; }
+.modal-title { font-size: 17px; font-weight: 650; margin: 0 0 4px; padding-right: 32px; }
+.modal-sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* Before → after comparison strip */
+.compare {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface-subtle); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 18px;
+}
+.compare-cell { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.compare-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.compare-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.compare-cell-accent .compare-value { color: var(--accent); }
+.compare-arrow { color: var(--muted-soft); font-size: 16px; }
+
+/* ── Alerts ──────────────────────────────────────────────── */
+.alert {
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  font-size: 12.5px; font-weight: 500; margin-bottom: 4px;
+  border: 1px solid transparent;
+}
+.alert-warn { background: var(--warn-soft); color: var(--warn); border-color: #f3dcb8; }
+.alert-error { background: var(--danger-soft); color: var(--danger); border-color: #f6cfcb; }
+
+/* ── Toast ───────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  z-index: 200; padding: 11px 20px; border-radius: 999px;
+  background: var(--text); color: #fff;
+  font-size: 13px; font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  animation: toast-in .2s ease;
+}
+.toast.is-error { background: var(--danger); }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .app { padding: 16px; }
+  .search { flex-direction: column; align-items: stretch; }
+  .search .btn { width: 100%; }
+  .job-head { flex-direction: column; gap: 16px; }
+  .job-stats { gap: 20px; }
+  .modal { padding: 12px; }
+  .modal-box { padding: 20px; }
+}
+
+/* preview-only chrome */
+.preview-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 300;
+  background: #14181f; color: #fff; font-family: var(--font);
+  font-size: 12px; padding: 6px 16px; letter-spacing: .02em;
+}
+.preview-banner b { color: #ff8dbd; }
+.app { padding-top: 48px; }
+</style>
+</head>
+<body>
+<div class="preview-banner">
+  <b>LOCAL PREVIEW</b> — mock data, no Appsmith. Events are logged to the browser console.
+</div>
+<div class="app" id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <h1 class="title">HIRE CPC Overrides</h1>
+      <span class="chip" id="override-chip">0 active overrides</span>
+    </div>
+    <div class="hdr-right">
+      <button class="btn btn-ghost" id="refresh" title="Reload data">
+        <span class="btn-ico">&#8635;</span> Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Search ─────────────────────────────────────────────── -->
+  <section class="card search-card">
+    <form class="search" id="search-form" autocomplete="off">
+      <label class="field field-grow">
+        <span>Job ID</span>
+        <div class="input-wrap">
+          <span class="input-ico">&#128269;</span>
+          <input id="search-input" type="text" placeholder="e.g. 8f3c1a2e-… or 481920" />
+        </div>
+      </label>
+      <label class="field">
+        <span>Status</span>
+        <select id="filter-status">
+          <option value="all">All sources</option>
+          <option value="override">Overridden only</option>
+          <option value="algorithmic">Algorithmic only</option>
+        </select>
+      </label>
+      <button class="btn btn-primary" id="search-btn" type="submit">Search</button>
+    </form>
+  </section>
+
+  <!-- ── Empty / loading / error states ─────────────────────── -->
+  <section class="card state-card" id="state-card">
+    <div class="state" id="state-empty">
+      <div class="state-ico">&#9906;</div>
+      <h2 class="state-title">Search for a HIRE job</h2>
+      <p class="state-text">Enter a job ID above to view and manage its CPC per source.</p>
+    </div>
+    <div class="state" id="state-loading" hidden>
+      <div class="spinner"></div>
+      <p class="state-text">Loading job…</p>
+    </div>
+    <div class="state" id="state-error" hidden>
+      <div class="state-ico state-ico-warn">&#9888;</div>
+      <h2 class="state-title">Something went wrong</h2>
+      <p class="state-text" id="state-error-text">—</p>
+    </div>
+  </section>
+
+  <!-- ── Job result ─────────────────────────────────────────── -->
+  <div id="result" hidden>
+
+    <section class="card job-card">
+      <div class="job-head">
+        <div>
+          <h2 class="job-title" id="job-title">—</h2>
+          <p class="job-meta">
+            <span id="job-company">—</span>
+            <span class="dot">&middot;</span>
+            <span id="job-city">—</span>
+            <span class="dot">&middot;</span>
+            <code class="code" id="job-id">—</code>
+          </p>
+        </div>
+        <div class="job-stats">
+          <div class="stat">
+            <span class="stat-label">Sources</span>
+            <span class="stat-value" id="stat-sources">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Overridden</span>
+            <span class="stat-value stat-accent" id="stat-overrides">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Avg CPC</span>
+            <span class="stat-value" id="stat-avg">—</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-hdr">
+        <h2 class="section-title">CPC by source</h2>
+        <span class="muted" id="rows-count">0 sources</span>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl" id="tbl-sources">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th class="num">Current CPC</th>
+              <th class="num">Algorithmic CPC</th>
+              <th>Status</th>
+              <th>Last modified</th>
+              <th class="right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sources-body"></tbody>
+        </table>
+        <div class="table-empty" id="sources-empty" hidden>No sources match this filter.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-hdr">
+        <h2 class="section-title">Change history</h2>
+        <span class="muted" id="history-count">0 events</span>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl tbl-compact" id="tbl-history">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Source</th>
+              <th class="num">Old</th>
+              <th class="num">New</th>
+              <th>Changed by</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+        <div class="table-empty" id="history-empty" hidden>No changes recorded for this job yet.</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ── Override modal ─────────────────────────────────────── -->
+  <div class="modal" id="override-modal">
+    <div class="modal-box">
+      <button class="icon-btn" id="override-close" aria-label="Close">&#10005;</button>
+      <h2 class="modal-title" id="override-title">Set CPC override</h2>
+      <p class="modal-sub" id="override-sub">—</p>
+
+      <div class="compare">
+        <div class="compare-cell">
+          <span class="compare-label">Algorithmic</span>
+          <span class="compare-value" id="override-algo">—</span>
+        </div>
+        <span class="compare-arrow">&#8594;</span>
+        <div class="compare-cell compare-cell-accent">
+          <span class="compare-label">New override</span>
+          <span class="compare-value" id="override-preview">—</span>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Override CPC (&euro;)</span>
+        <div class="input-wrap">
+          <span class="input-ico">&euro;</span>
+          <input id="override-input" type="number" step="0.01" min="0" placeholder="0.00" />
+        </div>
+        <small class="hint" id="override-hint">—</small>
+      </label>
+
+      <label class="field">
+        <span>Reason <span class="req">*</span></span>
+        <textarea id="override-reason" rows="3"
+          placeholder="Why is this override needed? e.g. underperforming slot, client escalation"></textarea>
+      </label>
+
+      <div class="alert alert-warn" id="override-warn" hidden></div>
+      <div class="alert alert-error" id="override-error" hidden></div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="override-cancel">Cancel</button>
+        <button class="btn btn-primary" id="override-submit">Save override</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Revert modal ───────────────────────────────────────── -->
+  <div class="modal" id="revert-modal">
+    <div class="modal-box modal-box-sm">
+      <button class="icon-btn" id="revert-close" aria-label="Close">&#10005;</button>
+      <h2 class="modal-title">Remove override</h2>
+      <p class="modal-sub" id="revert-sub">—</p>
+
+      <div class="compare">
+        <div class="compare-cell">
+          <span class="compare-label">Current override</span>
+          <span class="compare-value" id="revert-current">—</span>
+        </div>
+        <span class="compare-arrow">&#8594;</span>
+        <div class="compare-cell compare-cell-accent">
+          <span class="compare-label">Back to algorithmic</span>
+          <span class="compare-value" id="revert-algo">—</span>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Reason <span class="req">*</span></span>
+        <textarea id="revert-reason" rows="3" placeholder="Why is the override no longer needed?"></textarea>
+      </label>
+
+      <div class="alert alert-error" id="revert-error" hidden></div>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="revert-cancel">Cancel</button>
+        <button class="btn btn-danger" id="revert-submit">Remove override</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast ──────────────────────────────────────────────── -->
+  <div class="toast" id="toast" hidden><span id="toast-text"></span></div>
+
+</div>
+
+<script>
+// ── Stub of the Appsmith custom-widget runtime ──────────────
+const MOCK_MODEL = {
+  "status": "ready",
+  "error": "",
+  "job": {
+    "job_id": "8f3c1a2e-77b4-4d51-9a0c-2e11d3c9b840",
+    "job_title": "Pflegefachkraft (m/w/d) \u2014 Vollzeit",
+    "company_name": "Vitanas Gruppe",
+    "city": "Berlin"
+  },
+  "limits": {
+    "min_cents": 5,
+    "max_cents": 800,
+    "max_multiplier": 5
+  },
+  "rows": [
+    {
+      "source_name": "stepstone",
+      "cost_per_click_cents": 185,
+      "algorithmic_cpc_cents": 92,
+      "is_override": true,
+      "changed_by": "shevya.tripathi@heyjobs.de",
+      "changed_at": "2026-08-14T09:41:00Z"
+    },
+    {
+      "source_name": "indeed",
+      "cost_per_click_cents": 74,
+      "algorithmic_cpc_cents": 74,
+      "is_override": false,
+      "changed_by": "bos_pipeline",
+      "changed_at": "2026-08-19T03:12:00Z"
+    },
+    {
+      "source_name": "jobrapido",
+      "cost_per_click_cents": 240,
+      "algorithmic_cpc_cents": 61,
+      "is_override": true,
+      "changed_by": "justine.k@heyjobs.de",
+      "changed_at": "2026-08-11T16:05:00Z"
+    },
+    {
+      "source_name": "talent_com",
+      "cost_per_click_cents": 58,
+      "algorithmic_cpc_cents": 58,
+      "is_override": false,
+      "changed_by": "bos_pipeline",
+      "changed_at": "2026-08-19T03:12:00Z"
+    }
+  ],
+  "history": [
+    {
+      "changed_at": "2026-08-14T09:41:00Z",
+      "source_name": "stepstone",
+      "old_value_cents": 92,
+      "new_value_cents": 185,
+      "changed_by": "shevya.tripathi@heyjobs.de",
+      "reason": "Underperforming slot \u2014 pushing visibility before contract review"
+    },
+    {
+      "changed_at": "2026-08-11T16:05:00Z",
+      "source_name": "jobrapido",
+      "old_value_cents": 61,
+      "new_value_cents": 240,
+      "changed_by": "justine.k@heyjobs.de",
+      "reason": "Client escalation, needs application volume this week"
+    },
+    {
+      "changed_at": "2026-08-02T11:20:00Z",
+      "source_name": "stepstone",
+      "old_value_cents": 140,
+      "new_value_cents": 92,
+      "changed_by": "bos_pipeline",
+      "reason": "Algorithmic recompute"
+    }
+  ]
+};
+window.appsmith = {
+  model: MOCK_MODEL,
+  _ready: null,
+  onReady(fn) { this._ready = fn; fn(); },
+  updateModel(patch) {
+    this.model = { ...this.model, ...patch };
+    if (this._ready) this._ready();
+  },
+  triggerEvent(name, payload) {
+    console.log('[appsmith.triggerEvent]', name, payload);
+    simulate(name, payload);
+  },
+};
+
+// Fake backend so the preview behaves like the real thing.
+function simulate(name, payload) {
+  const m = window.appsmith.model;
+  if (name === 'onSearch') {
+    window.appsmith.updateModel({ status: 'loading' });
+    setTimeout(() => window.appsmith.updateModel({
+      status: 'ready',
+      job: { ...m.job, job_id: payload.jobId },
+      toast: { text: 'Job loaded', isError: false },
+    }), 500);
+    return;
+  }
+  if (name === 'onSaveOverride') {
+    const rows = m.rows.map((r) => r.source_name === payload.source
+      ? { ...r, cost_per_click_cents: payload.cpcCents, is_override: true,
+           changed_by: 'you@heyjobs.de', changed_at: new Date().toISOString() }
+      : r);
+    const history = [{
+      changed_at: new Date().toISOString(), source_name: payload.source,
+      old_value_cents: payload.previousCents, new_value_cents: payload.cpcCents,
+      changed_by: 'you@heyjobs.de', reason: payload.reason,
+    }, ...m.history];
+    window.appsmith.updateModel({ rows, history, toast: { text: 'Override saved', isError: false } });
+    return;
+  }
+  if (name === 'onRemoveOverride') {
+    const rows = m.rows.map((r) => r.source_name === payload.source
+      ? { ...r, cost_per_click_cents: r.algorithmic_cpc_cents, is_override: false,
+           changed_by: 'bos_pipeline', changed_at: new Date().toISOString() }
+      : r);
+    const history = [{
+      changed_at: new Date().toISOString(), source_name: payload.source,
+      old_value_cents: m.rows.find((r) => r.source_name === payload.source).cost_per_click_cents,
+      new_value_cents: payload.algorithmicCents,
+      changed_by: 'you@heyjobs.de', reason: payload.reason,
+    }, ...m.history];
+    window.appsmith.updateModel({ rows, history, toast: { text: 'Override removed', isError: false } });
+    return;
+  }
+  if (name === 'onRefresh') {
+    window.appsmith.updateModel({ toast: { text: 'Refreshed', isError: false } });
+  }
+}
+</script>
+<script>
+// HIRE CPC Override Tool — Appsmith custom widget
+//
+// Model shape (bind in the Default Model tab; see README for the query bindings):
+//   status:  'idle' | 'loading' | 'ready' | 'error'
+//   error:   string
+//   job:     { job_id, job_title, company_name, city }
+//   rows:    [{ source_name, cost_per_click_cents, algorithmic_cpc_cents,
+//               is_override, changed_by, changed_at }]
+//   history: [{ changed_at, source_name, old_value_cents, new_value_cents,
+//               changed_by, reason }]
+//   limits:  { min_cents, max_cents, max_multiplier }
+//   toast:   { text, isError }   // optional, shown once per model update
+//
+// Events (Events tab):
+//   onSearch({ jobId })
+//   onSaveOverride({ jobId, source, cpcCents, previousCents, reason })
+//   onRemoveOverride({ jobId, source, algorithmicCents, reason })
+//   onRefresh()
+
+const $ = (id) => document.getElementById(id);
+
+const DEFAULT_LIMITS = { min_cents: 1, max_cents: 1000, max_multiplier: 5 };
+
+const state = {
+  bound: false,
+  filter: 'all',
+  rows: [],
+  job: null,
+  limits: DEFAULT_LIMITS,
+  target: null,      // row being edited / reverted
+  lastToast: null,
+};
+
+/* ── Formatting helpers ──────────────────────────────────── */
+
+const model = () => appsmith.model || {};
+const limits = () => ({ ...DEFAULT_LIMITS, ...(model().limits || {}) });
+
+/** Format a cents value as a euro string, e.g. 4200 -> "€42.00". */
+function euro(cents) {
+  if (cents === null || cents === undefined || cents === '') return '—';
+  const n = Number(cents);
+  return Number.isFinite(n) ? `€${(n / 100).toFixed(2)}` : '—';
+}
+
+/** Escape user/API text before it goes into innerHTML. */
+function esc(v) {
+  if (v === null || v === undefined || v === '') return '';
+  return String(v).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const dash = (v) => (v === null || v === undefined || v === '' ? '—' : esc(v));
+
+/** Short, readable timestamp — falls back to the raw string if unparseable. */
+function stamp(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return esc(value);
+  return d.toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/** Percentage delta of an override vs its algorithmic baseline. */
+function deltaLabel(current, base) {
+  if (!Number.isFinite(Number(current)) || !Number.isFinite(Number(base)) || !Number(base)) return '';
+  const pct = ((Number(current) - Number(base)) / Number(base)) * 100;
+  if (Math.abs(pct) < 0.5) return '';
+  const cls = pct > 0 ? 'delta-up' : 'delta-down';
+  return `<span class="delta ${cls}">${pct > 0 ? '+' : ''}${pct.toFixed(0)}%</span>`;
+}
+
+/* ── Rendering ───────────────────────────────────────────── */
+
+function renderState(status, error) {
+  const showState = status !== 'ready';
+  $('state-card').hidden = !showState;
+  $('result').hidden = showState;
+  $('state-empty').hidden = status !== 'idle';
+  $('state-loading').hidden = status !== 'loading';
+  $('state-error').hidden = status !== 'error';
+  if (status === 'error') $('state-error-text').textContent = error || 'Could not load this job.';
+}
+
+function renderJob(job, rows) {
+  $('job-title').textContent = job.job_title || 'Untitled job';
+  $('job-company').textContent = job.company_name || '—';
+  $('job-city').textContent = job.city || '—';
+  $('job-id').textContent = job.job_id || '—';
+
+  const overrides = rows.filter((r) => r.is_override);
+  const live = rows.map((r) => Number(r.cost_per_click_cents)).filter(Number.isFinite);
+  const avg = live.length ? live.reduce((a, b) => a + b, 0) / live.length : null;
+
+  $('stat-sources').textContent = rows.length;
+  $('stat-overrides').textContent = overrides.length;
+  $('stat-avg').textContent = avg === null ? '—' : euro(avg);
+  $('override-chip').textContent =
+    `${overrides.length} active override${overrides.length === 1 ? '' : 's'}`;
+}
+
+function rowHtml(row, idx) {
+  const isOverride = Boolean(row.is_override);
+  const badge = isOverride
+    ? '<span class="badge badge-override">Override</span>'
+    : '<span class="badge badge-algo">Algorithmic</span>';
+  const delta = isOverride ? deltaLabel(row.cost_per_click_cents, row.algorithmic_cpc_cents) : '';
+  const actions = isOverride
+    ? `<button class="btn btn-ghost btn-sm" data-act="edit" data-idx="${idx}">Edit</button>
+       <button class="btn-link" data-act="revert" data-idx="${idx}">Remove</button>`
+    : `<button class="btn btn-ghost btn-sm" data-act="edit" data-idx="${idx}">Set override</button>`;
+
+  return `<tr>
+    <td class="src-name">${dash(row.source_name)}</td>
+    <td class="num"><span class="cpc ${isOverride ? 'cpc-override' : ''}">${euro(row.cost_per_click_cents)}</span> ${delta}</td>
+    <td class="num"><span class="cpc-muted">${euro(row.algorithmic_cpc_cents)}</span></td>
+    <td>${badge}</td>
+    <td><div class="stamp">
+      <span class="stamp-who">${dash(row.changed_by)}</span>
+      <span class="stamp-when">${stamp(row.changed_at)}</span>
+    </div></td>
+    <td class="right"><div class="row-actions">${actions}</div></td>
+  </tr>`;
+}
+
+function renderRows() {
+  const rows = state.rows.filter((r) =>
+    state.filter === 'all' ||
+    (state.filter === 'override' ? Boolean(r.is_override) : !r.is_override));
+
+  $('sources-body').innerHTML = rows.map((r) => rowHtml(r, state.rows.indexOf(r))).join('');
+  $('sources-empty').hidden = rows.length > 0;
+  $('rows-count').textContent = `${rows.length} source${rows.length === 1 ? '' : 's'}`;
+
+  $('sources-body').querySelectorAll('button[data-act]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const row = state.rows[Number(btn.dataset.idx)];
+      if (!row) return;
+      if (btn.dataset.act === 'edit') openOverride(row);
+      else openRevert(row);
+    });
+  });
+}
+
+function renderHistory(history) {
+  $('history-body').innerHTML = history.map((h) => `<tr>
+    <td>${stamp(h.changed_at)}</td>
+    <td>${dash(h.source_name)}</td>
+    <td class="num cpc-muted">${euro(h.old_value_cents)}</td>
+    <td class="num cpc">${euro(h.new_value_cents)}</td>
+    <td>${dash(h.changed_by)}</td>
+    <td>${dash(h.reason)}</td>
+  </tr>`).join('');
+  $('history-empty').hidden = history.length > 0;
+  $('history-count').textContent = `${history.length} event${history.length === 1 ? '' : 's'}`;
+}
+
+function render(m) {
+  state.rows = Array.isArray(m.rows) ? m.rows : [];
+  state.job = m.job || null;
+  state.limits = limits();
+
+  const status = m.status || (state.job ? 'ready' : 'idle');
+  renderState(status, m.error);
+
+  if (status === 'ready' && state.job) {
+    renderJob(state.job, state.rows);
+    renderRows();
+    renderHistory(Array.isArray(m.history) ? m.history : []);
+  } else {
+    $('override-chip').textContent = '0 active overrides';
+  }
+
+  showToast(m.toast);
+}
+
+/* ── Toast ───────────────────────────────────────────────── */
+
+let toastTimer = null;
+
+function showToast(toast) {
+  if (!toast || !toast.text) return;
+  const key = `${toast.text}|${toast.isError}`;
+  if (key === state.lastToast) return;   // don't re-fire on unrelated model updates
+  state.lastToast = key;
+
+  const el = $('toast');
+  $('toast-text').textContent = toast.text;
+  el.classList.toggle('is-error', Boolean(toast.isError));
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; state.lastToast = null; }, 3200);
+}
+
+/* ── Override modal ──────────────────────────────────────── */
+
+function openOverride(row) {
+  state.target = row;
+  const base = Number(row.algorithmic_cpc_cents);
+  const { min_cents, max_cents } = state.limits;
+
+  $('override-title').textContent = row.is_override ? 'Edit CPC override' : 'Set CPC override';
+  $('override-sub').textContent = `${row.source_name} · ${state.job?.job_title || ''}`.trim();
+  $('override-algo').textContent = euro(row.algorithmic_cpc_cents);
+  $('override-hint').textContent =
+    `Allowed range ${euro(min_cents)} – ${euro(max_cents)}.` +
+    (Number.isFinite(base) && base ? ` Algorithmic value is ${euro(base)}.` : '');
+  $('override-hint').classList.remove('is-error');
+  $('override-input').value = row.is_override && Number.isFinite(Number(row.cost_per_click_cents))
+    ? (Number(row.cost_per_click_cents) / 100).toFixed(2)
+    : '';
+  $('override-reason').value = '';
+  $('override-error').hidden = true;
+  $('override-warn').hidden = true;
+
+  validateOverride();
+  $('override-modal').classList.add('is-open');
+  setTimeout(() => $('override-input').focus(), 40);
+}
+
+/** Validate the input, paint the preview/warnings, return cents or null. */
+function validateOverride() {
+  const raw = $('override-input').value.trim();
+  const { min_cents, max_cents, max_multiplier } = state.limits;
+  const base = Number(state.target?.algorithmic_cpc_cents);
+  const errEl = $('override-error');
+  const warnEl = $('override-warn');
+  const preview = $('override-preview');
+
+  warnEl.hidden = true;
+  errEl.hidden = true;
+
+  if (raw === '') { preview.textContent = '—'; return null; }
+
+  const euros = Number(raw);
+  if (!Number.isFinite(euros)) {
+    preview.textContent = '—';
+    return fail(errEl, 'Enter a numeric CPC value.');
+  }
+
+  const cents = Math.round(euros * 100);
+  preview.textContent = euro(cents);
+
+  if (cents < min_cents || cents > max_cents) {
+    return fail(errEl, `CPC must be between ${euro(min_cents)} and ${euro(max_cents)}.`);
+  }
+
+  // Typo guardrail: flag (but don't block) large jumps off the algorithmic value.
+  if (Number.isFinite(base) && base > 0 && cents / base > max_multiplier) {
+    warnEl.textContent =
+      `This is ${(cents / base).toFixed(1)}× the algorithmic CPC of ${euro(base)}. Double-check before saving.`;
+    warnEl.hidden = false;
+  }
+  return cents;
+}
+
+function fail(el, message) {
+  el.textContent = message;
+  el.hidden = false;
+  return null;
+}
+
+function submitOverride() {
+  const cents = validateOverride();
+  if (cents === null) {
+    if ($('override-error').hidden) fail($('override-error'), 'Enter a CPC value.');
+    return;
+  }
+  const reason = $('override-reason').value.trim();
+  if (!reason) return fail($('override-error'), 'A reason is required — it is written to the history log.');
+
+  appsmith.triggerEvent('onSaveOverride', {
+    jobId: state.job?.job_id,
+    source: state.target?.source_name,
+    cpcCents: cents,
+    previousCents: state.target?.cost_per_click_cents ?? null,
+    reason,
+  });
+  closeModal('override-modal');
+}
+
+/* ── Revert modal ────────────────────────────────────────── */
+
+function openRevert(row) {
+  state.target = row;
+  $('revert-sub').textContent = `${row.source_name} · ${state.job?.job_title || ''}`.trim();
+  $('revert-current').textContent = euro(row.cost_per_click_cents);
+  $('revert-algo').textContent = euro(row.algorithmic_cpc_cents);
+  $('revert-reason').value = '';
+  $('revert-error').hidden = true;
+  $('revert-modal').classList.add('is-open');
+  setTimeout(() => $('revert-reason').focus(), 40);
+}
+
+function submitRevert() {
+  const reason = $('revert-reason').value.trim();
+  if (!reason) return fail($('revert-error'), 'A reason is required — it is written to the history log.');
+
+  appsmith.triggerEvent('onRemoveOverride', {
+    jobId: state.job?.job_id,
+    source: state.target?.source_name,
+    algorithmicCents: state.target?.algorithmic_cpc_cents ?? null,
+    reason,
+  });
+  closeModal('revert-modal');
+}
+
+function closeModal(id) { $(id).classList.remove('is-open'); }
+
+/* ── Wiring ──────────────────────────────────────────────── */
+
+function bindEvents() {
+  if (state.bound) return;
+  state.bound = true;
+
+  $('search-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const jobId = $('search-input').value.trim();
+    if (jobId) appsmith.triggerEvent('onSearch', { jobId });
+  });
+
+  $('filter-status').addEventListener('change', (e) => {
+    state.filter = e.target.value;
+    renderRows();
+  });
+
+  $('refresh').addEventListener('click', () => appsmith.triggerEvent('onRefresh'));
+
+  $('override-input').addEventListener('input', validateOverride);
+  $('override-submit').addEventListener('click', submitOverride);
+  $('revert-submit').addEventListener('click', submitRevert);
+
+  [['override-close', 'override-modal'], ['override-cancel', 'override-modal'],
+   ['revert-close', 'revert-modal'], ['revert-cancel', 'revert-modal']]
+    .forEach(([btn, modal]) => $(btn).addEventListener('click', () => closeModal(modal)));
+
+  ['override-modal', 'revert-modal'].forEach((id) => {
+    $(id).addEventListener('click', (e) => { if (e.target.id === id) closeModal(id); });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') ['override-modal', 'revert-modal'].forEach(closeModal);
+  });
+}
+
+// appsmith.onReady fires on initial load AND on every model update.
+appsmith.onReady(() => {
+  bindEvents();
+  render(model());
+});
+
+</script>
+</body>
+</html>
