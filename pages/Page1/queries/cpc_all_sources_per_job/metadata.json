@@ -24,7 +24,7 @@
     ],
     "name": "cpc_all_sources_per_job",
     "pageId": "Page1",
-    "runBehaviour": "MANUAL",
+    "runBehaviour": "AUTOMATIC",
     "userSetOnLoad": false
   }
 }
