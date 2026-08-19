@@ -56,6 +56,22 @@ const state = {
 /* ── Formatting helpers ──────────────────────────────────── */
 
 const model = () => appsmith.model || {};
+
+// Keys owned by the Default Model bindings. A key written through updateModel() shadows
+// the bound value, so these must never be echoed back in a patch — doing so freezes the
+// widget on whatever those values were at the time of the write.
+const BOUND_KEYS = ['rows', 'history', 'status', 'error', 'limits'];
+
+/** Merge `patch` into the model without shadowing anything the bindings own. */
+function patchModel(patch) {
+  const carried = { ...model() };
+  BOUND_KEYS.forEach((k) => delete carried[k]);
+  try {
+    if (appsmith.updateModel) appsmith.updateModel({ ...carried, ...patch });
+  } catch (err) {
+    console.error('updateModel failed', err);
+  }
+}
 const limits = () => ({ ...DEFAULT_LIMITS, ...(model().limits || {}) });
 
 /** Format a cents value as a euro string, e.g. 4200 -> "€42.00". */
@@ -292,6 +308,14 @@ function render(m) {
   const history = Array.isArray(m.history) ? m.history : [];
   const rawRows = Array.isArray(m.rows) ? m.rows : [];
 
+  // The widget is the sole owner of searchJobId. If a Default Model re-evaluation drops
+  // it while we still hold one, put it back — the queries bind to it, and a null there
+  // means they run against no job at all.
+  if (state.searchJobId && m.searchJobId == null && !state.restoringId) {
+    state.restoringId = true;
+    setTimeout(() => { state.restoringId = false; }, 200);
+    patchModel({ searchJobId: state.searchJobId });
+  }
   state.searchJobId = m.searchJobId ?? state.searchJobId;
   state.rows = enrichRows(rawRows, history);
   state.job = m.job || (state.searchJobId ? { job_id: state.searchJobId } : null);
@@ -463,13 +487,7 @@ function submitSearch() {
   // before triggering the fetch — updateModel propagates to the parent frame
   // asynchronously, so firing the event in the same tick can run the queries against
   // the previous ID.
-  try {
-    if (appsmith.updateModel) {
-      appsmith.updateModel({ ...model(), searchJobId: state.searchJobId });
-    }
-  } catch (err) {
-    console.error('updateModel failed', err);
-  }
+  patchModel({ searchJobId: state.searchJobId });
   setTimeout(() => {
     if (appsmith.triggerEvent) appsmith.triggerEvent('onSearch', { jobId: state.searchJobId });
   }, 40);

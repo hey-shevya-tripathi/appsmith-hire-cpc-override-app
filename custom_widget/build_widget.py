@@ -134,15 +134,18 @@ RUN_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
 # Appsmith evaluates the property as one binding; given an object it stores the inner
 # "{{ ... }}" strings verbatim and the widget receives them as literal text.
 #
-# `searchJobId: null` declares the key so the queries can bind to
-# `CpcOverrideTool.model.searchJobId`; the widget overwrites it via updateModel().
+# `searchJobId` is deliberately NOT declared here. This expression re-evaluates whenever
+# a bound query changes state — including the moment the queries start running after a
+# search — and any key it declares is re-asserted, wiping the value `updateModel()` just
+# wrote. The widget owns that key exclusively; queries read it via
+# `{{CpcOverrideTool.model.searchJobId}}` and simply see undefined until the first search.
+#
 # `job` is absent because neither query returns job attributes — the widget falls back
 # to the ID typed into its own search box.
 BOUND_MODEL = f"""{{{{
   {{
     rows: {Q_SOURCES}.data || [],
     history: {Q_HISTORY}.data || [],
-    searchJobId: null,
     limits: {{ min_cents: 5, max_cents: 300, max_multiplier: 5 }},
     status: ({Q_SOURCES}.isLoading || {Q_HISTORY}.isLoading)
       ? 'loading'
