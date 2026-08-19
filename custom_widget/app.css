@@ -77,6 +77,14 @@ body, .app {
 .field-grow { flex: 1 1 280px; }
 .search .btn { height: 38px; }
 
+.search-echo {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.search-echo.is-warn { color: var(--danger); font-weight: 500; }
+
 /* ── Fields ──────────────────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .search .field { margin-bottom: 0; }

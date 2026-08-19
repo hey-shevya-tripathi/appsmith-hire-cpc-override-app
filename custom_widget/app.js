@@ -304,6 +304,25 @@ function renderHistory(rawHistory) {
   $('history-count').textContent = `${history.length} event${history.length === 1 ? '' : 's'}`;
 }
 
+/**
+ * Show what the widget last searched for versus what the model actually carries.
+ * These must agree — the queries read the model value (snapshotted into the store by
+ * the onSearch handler), so a mismatch is the difference between results and an empty
+ * table, and is otherwise invisible.
+ */
+function renderEcho(m, status) {
+  const el = $('search-echo');
+  if (!state.searchJobId && m.searchJobId == null) { el.hidden = true; return; }
+  const published = state.searchJobId ?? '—';
+  const inModel = m.searchJobId ?? 'undefined';
+  const agree = String(published) === String(inModel);
+  el.hidden = false;
+  el.classList.toggle('is-warn', !agree);
+  el.textContent = agree
+    ? `Job ${published} · ${status}`
+    : `Searched ${published}, but the model carries ${inModel} — the queries will use ${inModel}.`;
+}
+
 function render(m) {
   const history = Array.isArray(m.history) ? m.history : [];
   const rawRows = Array.isArray(m.rows) ? m.rows : [];
@@ -322,6 +341,7 @@ function render(m) {
   state.limits = limits();
 
   const status = m.status || (rawRows.length ? 'ready' : 'idle');
+  renderEcho(m, status);
   renderState(status, m.error);
 
   if (status === 'ready') {

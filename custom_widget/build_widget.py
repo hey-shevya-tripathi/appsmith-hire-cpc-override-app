@@ -132,14 +132,16 @@ Q_HISTORY = "history"
 # declared there may never be created. The store has neither problem — it is durable and
 # untouched by re-evaluation.
 #
-# `eventData` is the triggerEvent payload (see REACH-job-checker custom_widget_src/
-# SETUP.md), so the value arrives *with* the event and cannot be raced. The model is
-# kept as a fallback in case this Appsmith version does not expose eventData.
+# The handler reads the ID from the widget model and snapshots it into the store, so
+# even if a later re-evaluation drops it from the model, the queries keep the right ID.
+#
+# It does NOT use `eventData` (the triggerEvent payload referenced in REACH-job-checker's
+# SETUP.md): this Appsmith version does not expose that variable, and the linter rejects
+# the binding — "'eventData' is not defined" — which stops the handler running at all.
+# A `typeof` guard silences the runtime error but not the linter.
 STORE_KEY = "cpc_job_id"
 RUN_QUERIES = (
-    f"{{{{ storeValue('{STORE_KEY}',"
-    f" (typeof eventData !== 'undefined' && eventData && eventData.jobId)"
-    f" || CpcOverrideTool.model.searchJobId)"
+    f"{{{{ storeValue('{STORE_KEY}', CpcOverrideTool.model.searchJobId)"
     f".then(() => {{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}) }}}}"
 )
 REFRESH_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
