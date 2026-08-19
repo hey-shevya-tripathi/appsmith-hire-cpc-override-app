@@ -446,23 +446,32 @@ function closeModal(id) { $(id).classList.remove('is-open'); }
 
 /* ── Wiring ──────────────────────────────────────────────── */
 
+/**
+ * Publish the entered job ID, then ask Appsmith to fetch.
+ *
+ * The onSearch handler copies `searchJobId` into the Appsmith store, and the queries
+ * bind to the store rather than to this widget's model — binding them to the model
+ * would close a loop (query -> model -> defaultModel -> query.data) that Appsmith
+ * silently refuses to evaluate.
+ */
+function submitSearch() {
+  const jobId = $('search-input').value.trim();
+  if (!jobId) return;
+  state.searchJobId = Number(jobId) || jobId;
+  // Only searchJobId — a key set through updateModel shadows the bound Default Model
+  // value, so writing `status` here would freeze the UI on whatever it was set to.
+  appsmith.updateModel({ ...model(), searchJobId: state.searchJobId });
+  appsmith.triggerEvent('onSearch', { jobId: state.searchJobId });
+}
+
 function bindEvents() {
   if (state.bound) return;
   state.bound = true;
 
-  $('search-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const jobId = $('search-input').value.trim();
-    if (!jobId) return;
-    // Publish to the model *before* firing the event: `{{Widget.model.searchJobId}}` is
-    // the documented way for queries to read a value out of a custom widget, whereas the
-    // triggerEvent payload has no documented accessor. Queries bind to the model; the
-    // event just tells them when to run.
-    state.searchJobId = Number(jobId) || jobId;
-    // Only searchJobId — a key set through updateModel shadows the bound Default Model
-    // value, so writing `status` here would freeze the UI on whatever it was set to.
-    appsmith.updateModel({ ...model(), searchJobId: state.searchJobId });
-    appsmith.triggerEvent('onSearch', { jobId });
+  // Click + Enter rather than form submit — see the note in app.html.
+  $('search-btn').addEventListener('click', submitSearch);
+  $('search-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitSearch(); }
   });
 
   $('filter-status').addEventListener('change', (e) => {

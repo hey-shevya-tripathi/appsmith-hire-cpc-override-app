@@ -15,7 +15,10 @@
 
   <!-- ── Search ─────────────────────────────────────────────── -->
   <section class="card search-card">
-    <form class="search" id="search-form" autocomplete="off">
+    <!-- Deliberately a plain div, not a form element: Appsmith renders custom widgets
+         in a sandboxed iframe without `allow-forms`, so submission is blocked and the
+         submit event never fires. The button is wired by click instead. -->
+    <div class="search" id="search-form">
       <label class="field field-grow">
         <span>Job ID</span>
         <div class="input-wrap">
@@ -32,8 +35,8 @@
           <option value="all">All sources</option>
         </select>
       </label>
-      <button class="btn btn-primary" id="search-btn" type="submit">Search</button>
-    </form>
+      <button class="btn btn-primary" id="search-btn" type="button">Search</button>
+    </div>
   </section>
 
   <!-- ── Empty / loading / error states ─────────────────────── -->
