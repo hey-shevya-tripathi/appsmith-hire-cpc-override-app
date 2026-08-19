@@ -101,9 +101,15 @@ the widget overwrites it with `appsmith.updateModel()`.
 These come from the REACH-job-checker app (`feat/ui-redesign`), which runs the same
 one-custom-widget architecture and is the reference for anything ambiguous here:
 
-* **Queries binding to `{{CpcOverrideTool.model.searchJobId}}` is fine** even though
-  `defaultModel` binds back to those queries' data. That shape looks like a dependency
-  cycle but Appsmith resolves it.
+* **Don't carry a search value in the widget model.** The Default Model expression
+  re-evaluates on every query state change, so a key declared in it is reset mid-search,
+  while a key not declared in it may never be created. The job ID goes through
+  `storeValue()` instead — durable, and untouched by re-evaluation. The queries read
+  `{{ appsmith.store.cpc_job_id }}`, and `onSearch` writes it from `eventData.jobId`
+  (the triggerEvent payload) with the model as a fallback.
+* Binding a query to `{{CpcOverrideTool.model.x}}` while `defaultModel` binds back to
+  that query's data is *not* a fatal cycle — the reference app does exactly this. It is
+  only the lifetime of the value that makes the model a poor carrier.
 * **Never use a form element.** Custom widgets render in a sandboxed iframe without
   `allow-forms`, so submission is blocked. Wire buttons with
   `addEventListener('click', ...)` and handle Enter explicitly.

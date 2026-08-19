@@ -53,7 +53,7 @@
   "onRefresh": "{{ cpc_all_sources_per_job.run(); history.run(); }}",
   "onRemoveOverride": "",
   "onSaveOverride": "",
-  "onSearch": "{{ cpc_all_sources_per_job.run(); history.run(); }}",
+  "onSearch": "{{ storeValue('cpc_job_id', (typeof eventData !== 'undefined' && eventData && eventData.jobId) || CpcOverrideTool.model.searchJobId).then(() => { cpc_all_sources_per_job.run(); history.run(); }) }}",
   "parentColumnSpace": 18.671875,
   "parentId": "0",
   "parentRowSpace": 10,

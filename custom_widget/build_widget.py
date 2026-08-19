@@ -125,7 +125,24 @@ def read_sources() -> dict[str, str]:
 Q_SOURCES = "cpc_all_sources_per_job"
 Q_HISTORY = "history"
 
-RUN_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
+# The job ID reaches the queries through the Appsmith store, not the widget model.
+#
+# The model is the wrong carrier for it: the Default Model expression re-evaluates on
+# every query state change, so a key declared there is reset mid-search, and a key not
+# declared there may never be created. The store has neither problem — it is durable and
+# untouched by re-evaluation.
+#
+# `eventData` is the triggerEvent payload (see REACH-job-checker custom_widget_src/
+# SETUP.md), so the value arrives *with* the event and cannot be raced. The model is
+# kept as a fallback in case this Appsmith version does not expose eventData.
+STORE_KEY = "cpc_job_id"
+RUN_QUERIES = (
+    f"{{{{ storeValue('{STORE_KEY}',"
+    f" (typeof eventData !== 'undefined' && eventData && eventData.jobId)"
+    f" || CpcOverrideTool.model.searchJobId)"
+    f".then(() => {{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}) }}}}"
+)
+REFRESH_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
 
 # The live Default Model.
 #
@@ -137,8 +154,8 @@ RUN_QUERIES = f"{{{{ {Q_SOURCES}.run(); {Q_HISTORY}.run(); }}}}"
 # `searchJobId` is deliberately NOT declared here. This expression re-evaluates whenever
 # a bound query changes state — including the moment the queries start running after a
 # search — and any key it declares is re-asserted, wiping the value `updateModel()` just
-# wrote. The widget owns that key exclusively; queries read it via
-# `{{CpcOverrideTool.model.searchJobId}}` and simply see undefined until the first search.
+# wrote. The widget owns that key; it is only a fallback for the onSearch handler, since
+# the queries themselves read the store.
 #
 # `job` is absent because neither query returns job attributes — the widget falls back
 # to the ID typed into its own search box.
@@ -209,7 +226,7 @@ def build_dsl(src_doc: dict[str, str]) -> dict[str, Any]:
         "widgetName": WIDGET_NAME,
     }
     # Read events fetch; the write events stay empty until the endpoints exist.
-    actions = {"onSearch": RUN_QUERIES, "onRefresh": RUN_QUERIES}
+    actions = {"onSearch": RUN_QUERIES, "onRefresh": REFRESH_QUERIES}
     for event in EVENTS:
         widget[event] = actions.get(event, "")
     return widget

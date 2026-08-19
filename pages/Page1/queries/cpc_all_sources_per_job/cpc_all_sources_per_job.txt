@@ -4,7 +4,7 @@ h.source_campaign_status,
 h.created_at,
 h.updated_at
 FROM backend_mkt.campaigns h
-WHERE h.job_id = {{ CpcOverrideTool.model.searchJobId }}::bigint
+WHERE h.job_id = {{ appsmith.store.cpc_job_id }}::bigint
   AND h.cost_per_click_cents IS NOT NULL
   --AND h.created_at >= DATEADD(day, -90, CURRENT_DATE)
 ORDER BY h.created_at DESC
