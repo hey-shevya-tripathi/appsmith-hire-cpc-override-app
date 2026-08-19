@@ -318,15 +318,16 @@ input:disabled { background: var(--surface-subtle); color: var(--muted); cursor:
         <span>Job ID</span>
         <div class="input-wrap">
           <span class="input-ico">&#128269;</span>
-          <input id="search-input" type="text" placeholder="e.g. 8f3c1a2e-… or 481920" />
+          <input id="search-input" type="text" inputmode="numeric" placeholder="e.g. 34052274" />
         </div>
       </label>
       <label class="field">
-        <span>Status</span>
+        <span>Show</span>
         <select id="filter-status">
-          <option value="all">All sources</option>
+          <option value="active">Active sources</option>
           <option value="override">Overridden only</option>
-          <option value="algorithmic">Algorithmic only</option>
+          <option value="priced">Priced sources</option>
+          <option value="all">All sources</option>
         </select>
       </label>
       <button class="btn btn-primary" id="search-btn" type="submit">Search</button>
@@ -417,10 +418,11 @@ input:disabled { background: var(--surface-subtle); color: var(--muted); cursor:
             <tr>
               <th>When</th>
               <th>Source</th>
-              <th class="num">Old</th>
-              <th class="num">New</th>
+              <th class="num">Was</th>
+              <th class="num">Became</th>
               <th>Changed by</th>
               <th>Reason</th>
+              <th>Change</th>
             </tr>
           </thead>
           <tbody id="history-body"></tbody>
@@ -519,74 +521,192 @@ const MOCK_MODEL = {
   "status": "ready",
   "error": "",
   "job": {
-    "job_id": "8f3c1a2e-77b4-4d51-9a0c-2e11d3c9b840",
+    "job_id": 34052274,
     "job_title": "Pflegefachkraft (m/w/d) \u2014 Vollzeit",
     "company_name": "Vitanas Gruppe",
     "city": "Berlin"
   },
   "limits": {
     "min_cents": 5,
-    "max_cents": 800,
+    "max_cents": 300,
     "max_multiplier": 5
   },
   "rows": [
     {
-      "source_name": "stepstone",
-      "cost_per_click_cents": 185,
-      "algorithmic_cpc_cents": 92,
+      "source": "joblift",
+      "cost_per_click_cents": 250,
+      "algorithmic_cpc_cents": 85,
       "is_override": true,
       "changed_by": "shevya.tripathi@heyjobs.de",
-      "changed_at": "2026-08-14T09:41:00Z"
+      "changed_at": "2026-08-14T09:41:00Z",
+      "source_campaign_status": "active"
     },
     {
-      "source_name": "indeed",
-      "cost_per_click_cents": 74,
-      "algorithmic_cpc_cents": 74,
-      "is_override": false,
-      "changed_by": "bos_pipeline",
-      "changed_at": "2026-08-19T03:12:00Z"
-    },
-    {
-      "source_name": "jobrapido",
-      "cost_per_click_cents": 240,
-      "algorithmic_cpc_cents": 61,
+      "source": "jobrapido",
+      "cost_per_click_cents": 96,
+      "algorithmic_cpc_cents": 32,
       "is_override": true,
       "changed_by": "justine.k@heyjobs.de",
-      "changed_at": "2026-08-11T16:05:00Z"
+      "changed_at": "2026-08-11T16:05:00Z",
+      "source_campaign_status": "active"
     },
     {
-      "source_name": "talent_com",
-      "cost_per_click_cents": 58,
-      "algorithmic_cpc_cents": 58,
+      "source": "jobtome",
+      "cost_per_click_cents": 47,
+      "algorithmic_cpc_cents": 47,
       "is_override": false,
-      "changed_by": "bos_pipeline",
-      "changed_at": "2026-08-19T03:12:00Z"
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-08-19T05:30:08Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "adzuna",
+      "cost_per_click_cents": 45,
+      "algorithmic_cpc_cents": 45,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-08-19T05:30:08Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "stellenonline",
+      "cost_per_click_cents": 41,
+      "algorithmic_cpc_cents": 41,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-08-19T05:30:08Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "jobworld",
+      "cost_per_click_cents": 35,
+      "algorithmic_cpc_cents": 35,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-08-19T05:30:08Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "jooble",
+      "cost_per_click_cents": 30,
+      "algorithmic_cpc_cents": 30,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-07-22T12:20:02Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "allthetopbananas",
+      "cost_per_click_cents": 25,
+      "algorithmic_cpc_cents": 25,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-08-19T05:30:08Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "xing",
+      "cost_per_click_cents": 90,
+      "algorithmic_cpc_cents": 90,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-06-03T20:26:26Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "talent_platform",
+      "cost_per_click_cents": 100,
+      "algorithmic_cpc_cents": 100,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-07-22T12:20:02Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "facebook",
+      "cost_per_click_cents": null,
+      "algorithmic_cpc_cents": null,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-06-03T20:26:21Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "ebay-kleinanzeigen",
+      "cost_per_click_cents": null,
+      "algorithmic_cpc_cents": null,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-06-03T20:30:13Z",
+      "source_campaign_status": "active"
+    },
+    {
+      "source": "indeed",
+      "cost_per_click_cents": 0,
+      "algorithmic_cpc_cents": 0,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-06-03T20:26:20Z",
+      "source_campaign_status": "excluded"
+    },
+    {
+      "source": "careerjet",
+      "cost_per_click_cents": 50,
+      "algorithmic_cpc_cents": 50,
+      "is_override": false,
+      "changed_by": "hire_budget_updates",
+      "changed_at": "2026-06-03T20:26:19Z",
+      "source_campaign_status": "paused"
     }
   ],
   "history": [
     {
-      "changed_at": "2026-08-14T09:41:00Z",
-      "source_name": "stepstone",
-      "old_value_cents": 92,
-      "new_value_cents": 185,
+      "created_at": "2026-08-19T05:30:09Z",
+      "source": "jobtome",
+      "cost_per_click_cents": 47,
+      "changed_by": "hire_budget_updates",
+      "change_type": "update",
+      "reason": null
+    },
+    {
+      "created_at": "2026-08-18T05:06:09Z",
+      "source": "jobtome",
+      "cost_per_click_cents": 48,
+      "changed_by": "hire_budget_updates",
+      "change_type": "update",
+      "reason": null
+    },
+    {
+      "created_at": "2026-08-14T09:41:00Z",
+      "source": "joblift",
+      "cost_per_click_cents": 250,
       "changed_by": "shevya.tripathi@heyjobs.de",
+      "change_type": "update",
       "reason": "Underperforming slot \u2014 pushing visibility before contract review"
     },
     {
-      "changed_at": "2026-08-11T16:05:00Z",
-      "source_name": "jobrapido",
-      "old_value_cents": 61,
-      "new_value_cents": 240,
+      "created_at": "2026-08-13T05:48:21Z",
+      "source": "joblift",
+      "cost_per_click_cents": 85,
+      "changed_by": "hire_budget_updates",
+      "change_type": "update",
+      "reason": null
+    },
+    {
+      "created_at": "2026-08-11T16:05:00Z",
+      "source": "jobrapido",
+      "cost_per_click_cents": 96,
       "changed_by": "justine.k@heyjobs.de",
+      "change_type": "update",
       "reason": "Client escalation, needs application volume this week"
     },
     {
-      "changed_at": "2026-08-02T11:20:00Z",
-      "source_name": "stepstone",
-      "old_value_cents": 140,
-      "new_value_cents": 92,
-      "changed_by": "bos_pipeline",
-      "reason": "Algorithmic recompute"
+      "created_at": "2026-08-10T05:48:24Z",
+      "source": "jobrapido",
+      "cost_per_click_cents": 32,
+      "changed_by": "hire_budget_updates",
+      "change_type": "update",
+      "reason": null
     }
   ]
 };
@@ -617,28 +737,27 @@ function simulate(name, payload) {
     return;
   }
   if (name === 'onSaveOverride') {
-    const rows = m.rows.map((r) => r.source_name === payload.source
+    const rows = m.rows.map((r) => r.source === payload.source
       ? { ...r, cost_per_click_cents: payload.cpcCents, is_override: true,
            changed_by: 'you@heyjobs.de', changed_at: new Date().toISOString() }
       : r);
     const history = [{
-      changed_at: new Date().toISOString(), source_name: payload.source,
-      old_value_cents: payload.previousCents, new_value_cents: payload.cpcCents,
-      changed_by: 'you@heyjobs.de', reason: payload.reason,
+      created_at: new Date().toISOString(), source: payload.source,
+      cost_per_click_cents: payload.cpcCents, changed_by: 'you@heyjobs.de',
+      change_type: 'update', reason: payload.reason,
     }, ...m.history];
     window.appsmith.updateModel({ rows, history, toast: { text: 'Override saved', isError: false } });
     return;
   }
   if (name === 'onRemoveOverride') {
-    const rows = m.rows.map((r) => r.source_name === payload.source
+    const rows = m.rows.map((r) => r.source === payload.source
       ? { ...r, cost_per_click_cents: r.algorithmic_cpc_cents, is_override: false,
-           changed_by: 'bos_pipeline', changed_at: new Date().toISOString() }
+           changed_by: 'hire_budget_updates', changed_at: new Date().toISOString() }
       : r);
     const history = [{
-      changed_at: new Date().toISOString(), source_name: payload.source,
-      old_value_cents: m.rows.find((r) => r.source_name === payload.source).cost_per_click_cents,
-      new_value_cents: payload.algorithmicCents,
-      changed_by: 'you@heyjobs.de', reason: payload.reason,
+      created_at: new Date().toISOString(), source: payload.source,
+      cost_per_click_cents: payload.algorithmicCents, changed_by: 'you@heyjobs.de',
+      change_type: 'update', reason: payload.reason,
     }, ...m.history];
     window.appsmith.updateModel({ rows, history, toast: { text: 'Override removed', isError: false } });
     return;
@@ -655,12 +774,17 @@ function simulate(name, payload) {
 //   status:  'idle' | 'loading' | 'ready' | 'error'
 //   error:   string
 //   job:     { job_id, job_title, company_name, city }
-//   rows:    [{ source_name, cost_per_click_cents, algorithmic_cpc_cents,
-//               is_override, changed_by, changed_at }]
-//   history: [{ changed_at, source_name, old_value_cents, new_value_cents,
-//               changed_by, reason }]
+//   rows:    [{ source, cost_per_click_cents, algorithmic_cpc_cents, is_override,
+//               changed_by, changed_at, source_campaign_status }]
+//   history: [{ created_at, source, cost_per_click_cents, changed_by,
+//               change_type, reason }]
 //   limits:  { min_cents, max_cents, max_multiplier }
 //   toast:   { text, isError }   // optional, shown once per model update
+//
+// `rows` mirrors mkt_db.campaigns (one row per job × source, CPC in integer cents).
+// `history` mirrors mkt_db.campaign_history_records, which stores *snapshots* — each
+// row is the campaign as it stood after a change, not a diff. The widget derives the
+// "was → became" pair by comparing consecutive snapshots of the same source.
 //
 // Events (Events tab):
 //   onSearch({ jobId })
@@ -674,7 +798,7 @@ const DEFAULT_LIMITS = { min_cents: 1, max_cents: 1000, max_multiplier: 5 };
 
 const state = {
   bound: false,
-  filter: 'all',
+  filter: 'active',
   rows: [],
   job: null,
   limits: DEFAULT_LIMITS,
@@ -763,7 +887,10 @@ function rowHtml(row, idx) {
     : `<button class="btn btn-ghost btn-sm" data-act="edit" data-idx="${idx}">Set override</button>`;
 
   return `<tr>
-    <td class="src-name">${dash(row.source_name)}</td>
+    <td><div class="stamp">
+      <span class="src-name">${dash(row.source)}</span>
+      <span class="stamp-when">${dash(row.source_campaign_status)}</span>
+    </div></td>
     <td class="num"><span class="cpc ${isOverride ? 'cpc-override' : ''}">${euro(row.cost_per_click_cents)}</span> ${delta}</td>
     <td class="num"><span class="cpc-muted">${euro(row.algorithmic_cpc_cents)}</span></td>
     <td>${badge}</td>
@@ -775,14 +902,36 @@ function rowHtml(row, idx) {
   </tr>`;
 }
 
+/** A job carries 25+ source rows, most of them unpriced — filter to what's useful. */
+function matchesFilter(row) {
+  const priced = Number.isFinite(Number(row.cost_per_click_cents));
+  switch (state.filter) {
+    case 'override': return Boolean(row.is_override);
+    case 'priced': return priced;
+    case 'active': return row.source_campaign_status === 'active' || Boolean(row.is_override);
+    default: return true;
+  }
+}
+
+/** Overrides first, then most expensive, with unpriced sources last. */
+function sortRows(rows) {
+  return rows.slice().sort((a, b) => {
+    if (Boolean(a.is_override) !== Boolean(b.is_override)) return a.is_override ? -1 : 1;
+    const av = Number(a.cost_per_click_cents);
+    const bv = Number(b.cost_per_click_cents);
+    if (Number.isFinite(av) !== Number.isFinite(bv)) return Number.isFinite(av) ? -1 : 1;
+    if (Number.isFinite(av) && av !== bv) return bv - av;
+    return String(a.source || '').localeCompare(String(b.source || ''));
+  });
+}
+
 function renderRows() {
-  const rows = state.rows.filter((r) =>
-    state.filter === 'all' ||
-    (state.filter === 'override' ? Boolean(r.is_override) : !r.is_override));
+  const rows = sortRows(state.rows.filter(matchesFilter));
 
   $('sources-body').innerHTML = rows.map((r) => rowHtml(r, state.rows.indexOf(r))).join('');
   $('sources-empty').hidden = rows.length > 0;
-  $('rows-count').textContent = `${rows.length} source${rows.length === 1 ? '' : 's'}`;
+  $('rows-count').textContent =
+    `${rows.length} of ${state.rows.length} source${state.rows.length === 1 ? '' : 's'}`;
 
   $('sources-body').querySelectorAll('button[data-act]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -794,15 +943,37 @@ function renderRows() {
   });
 }
 
-function renderHistory(history) {
-  $('history-body').innerHTML = history.map((h) => `<tr>
-    <td>${stamp(h.changed_at)}</td>
-    <td>${dash(h.source_name)}</td>
-    <td class="num cpc-muted">${euro(h.old_value_cents)}</td>
-    <td class="num cpc">${euro(h.new_value_cents)}</td>
-    <td>${dash(h.changed_by)}</td>
-    <td>${dash(h.reason)}</td>
-  </tr>`).join('');
+/**
+ * campaign_history_records stores snapshots, not diffs. Walk each source's
+ * snapshots oldest-first so every event can show the value it replaced.
+ */
+function withPreviousValues(history) {
+  const previous = new Map();
+  return history
+    .slice()
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .map((h) => {
+      const was = previous.has(h.source) ? previous.get(h.source) : null;
+      previous.set(h.source, h.cost_per_click_cents);
+      return { ...h, was };
+    })
+    .reverse();
+}
+
+function renderHistory(rawHistory) {
+  const history = withPreviousValues(rawHistory);
+  $('history-body').innerHTML = history.map((h) => {
+    const changed = h.was !== null && Number(h.was) !== Number(h.cost_per_click_cents);
+    return `<tr>
+      <td>${stamp(h.created_at)}</td>
+      <td>${dash(h.source)}</td>
+      <td class="num cpc-muted">${h.was === null ? '—' : euro(h.was)}</td>
+      <td class="num ${changed ? 'cpc' : 'cpc-muted'}">${euro(h.cost_per_click_cents)}</td>
+      <td>${dash(h.changed_by)}</td>
+      <td>${dash(h.reason)}</td>
+      <td class="muted">${dash(h.change_type)}</td>
+    </tr>`;
+  }).join('');
   $('history-empty').hidden = history.length > 0;
   $('history-count').textContent = `${history.length} event${history.length === 1 ? '' : 's'}`;
 }
@@ -852,7 +1023,7 @@ function openOverride(row) {
   const { min_cents, max_cents } = state.limits;
 
   $('override-title').textContent = row.is_override ? 'Edit CPC override' : 'Set CPC override';
-  $('override-sub').textContent = `${row.source_name} · ${state.job?.job_title || ''}`.trim();
+  $('override-sub').textContent = `${row.source} · ${state.job?.job_title || ''}`.trim();
   $('override-algo').textContent = euro(row.algorithmic_cpc_cents);
   $('override-hint').textContent =
     `Allowed range ${euro(min_cents)} – ${euro(max_cents)}.` +
@@ -923,7 +1094,7 @@ function submitOverride() {
 
   appsmith.triggerEvent('onSaveOverride', {
     jobId: state.job?.job_id,
-    source: state.target?.source_name,
+    source: state.target?.source,
     cpcCents: cents,
     previousCents: state.target?.cost_per_click_cents ?? null,
     reason,
@@ -935,7 +1106,7 @@ function submitOverride() {
 
 function openRevert(row) {
   state.target = row;
-  $('revert-sub').textContent = `${row.source_name} · ${state.job?.job_title || ''}`.trim();
+  $('revert-sub').textContent = `${row.source} · ${state.job?.job_title || ''}`.trim();
   $('revert-current').textContent = euro(row.cost_per_click_cents);
   $('revert-algo').textContent = euro(row.algorithmic_cpc_cents);
   $('revert-reason').value = '';
@@ -950,7 +1121,7 @@ function submitRevert() {
 
   appsmith.triggerEvent('onRemoveOverride', {
     jobId: state.job?.job_id,
-    source: state.target?.source_name,
+    source: state.target?.source,
     algorithmicCents: state.target?.algorithmic_cpc_cents ?? null,
     reason,
   });

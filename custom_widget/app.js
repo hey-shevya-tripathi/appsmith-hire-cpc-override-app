@@ -4,12 +4,17 @@
 //   status:  'idle' | 'loading' | 'ready' | 'error'
 //   error:   string
 //   job:     { job_id, job_title, company_name, city }
-//   rows:    [{ source_name, cost_per_click_cents, algorithmic_cpc_cents,
-//               is_override, changed_by, changed_at }]
-//   history: [{ changed_at, source_name, old_value_cents, new_value_cents,
-//               changed_by, reason }]
+//   rows:    [{ source, cost_per_click_cents, algorithmic_cpc_cents, is_override,
+//               changed_by, changed_at, source_campaign_status }]
+//   history: [{ created_at, source, cost_per_click_cents, changed_by,
+//               change_type, reason }]
 //   limits:  { min_cents, max_cents, max_multiplier }
 //   toast:   { text, isError }   // optional, shown once per model update
+//
+// `rows` mirrors mkt_db.campaigns (one row per job × source, CPC in integer cents).
+// `history` mirrors mkt_db.campaign_history_records, which stores *snapshots* — each
+// row is the campaign as it stood after a change, not a diff. The widget derives the
+// "was → became" pair by comparing consecutive snapshots of the same source.
 //
 // Events (Events tab):
 //   onSearch({ jobId })
@@ -23,7 +28,7 @@ const DEFAULT_LIMITS = { min_cents: 1, max_cents: 1000, max_multiplier: 5 };
 
 const state = {
   bound: false,
-  filter: 'all',
+  filter: 'active',
   rows: [],
   job: null,
   limits: DEFAULT_LIMITS,
@@ -112,7 +117,10 @@ function rowHtml(row, idx) {
     : `<button class="btn btn-ghost btn-sm" data-act="edit" data-idx="${idx}">Set override</button>`;
 
   return `<tr>
-    <td class="src-name">${dash(row.source_name)}</td>
+    <td><div class="stamp">
+      <span class="src-name">${dash(row.source)}</span>
+      <span class="stamp-when">${dash(row.source_campaign_status)}</span>
+    </div></td>
     <td class="num"><span class="cpc ${isOverride ? 'cpc-override' : ''}">${euro(row.cost_per_click_cents)}</span> ${delta}</td>
     <td class="num"><span class="cpc-muted">${euro(row.algorithmic_cpc_cents)}</span></td>
     <td>${badge}</td>
@@ -124,14 +132,36 @@ function rowHtml(row, idx) {
   </tr>`;
 }
 
+/** A job carries 25+ source rows, most of them unpriced — filter to what's useful. */
+function matchesFilter(row) {
+  const priced = Number.isFinite(Number(row.cost_per_click_cents));
+  switch (state.filter) {
+    case 'override': return Boolean(row.is_override);
+    case 'priced': return priced;
+    case 'active': return row.source_campaign_status === 'active' || Boolean(row.is_override);
+    default: return true;
+  }
+}
+
+/** Overrides first, then most expensive, with unpriced sources last. */
+function sortRows(rows) {
+  return rows.slice().sort((a, b) => {
+    if (Boolean(a.is_override) !== Boolean(b.is_override)) return a.is_override ? -1 : 1;
+    const av = Number(a.cost_per_click_cents);
+    const bv = Number(b.cost_per_click_cents);
+    if (Number.isFinite(av) !== Number.isFinite(bv)) return Number.isFinite(av) ? -1 : 1;
+    if (Number.isFinite(av) && av !== bv) return bv - av;
+    return String(a.source || '').localeCompare(String(b.source || ''));
+  });
+}
+
 function renderRows() {
-  const rows = state.rows.filter((r) =>
-    state.filter === 'all' ||
-    (state.filter === 'override' ? Boolean(r.is_override) : !r.is_override));
+  const rows = sortRows(state.rows.filter(matchesFilter));
 
   $('sources-body').innerHTML = rows.map((r) => rowHtml(r, state.rows.indexOf(r))).join('');
   $('sources-empty').hidden = rows.length > 0;
-  $('rows-count').textContent = `${rows.length} source${rows.length === 1 ? '' : 's'}`;
+  $('rows-count').textContent =
+    `${rows.length} of ${state.rows.length} source${state.rows.length === 1 ? '' : 's'}`;
 
   $('sources-body').querySelectorAll('button[data-act]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -143,15 +173,37 @@ function renderRows() {
   });
 }
 
-function renderHistory(history) {
-  $('history-body').innerHTML = history.map((h) => `<tr>
-    <td>${stamp(h.changed_at)}</td>
-    <td>${dash(h.source_name)}</td>
-    <td class="num cpc-muted">${euro(h.old_value_cents)}</td>
-    <td class="num cpc">${euro(h.new_value_cents)}</td>
-    <td>${dash(h.changed_by)}</td>
-    <td>${dash(h.reason)}</td>
-  </tr>`).join('');
+/**
+ * campaign_history_records stores snapshots, not diffs. Walk each source's
+ * snapshots oldest-first so every event can show the value it replaced.
+ */
+function withPreviousValues(history) {
+  const previous = new Map();
+  return history
+    .slice()
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .map((h) => {
+      const was = previous.has(h.source) ? previous.get(h.source) : null;
+      previous.set(h.source, h.cost_per_click_cents);
+      return { ...h, was };
+    })
+    .reverse();
+}
+
+function renderHistory(rawHistory) {
+  const history = withPreviousValues(rawHistory);
+  $('history-body').innerHTML = history.map((h) => {
+    const changed = h.was !== null && Number(h.was) !== Number(h.cost_per_click_cents);
+    return `<tr>
+      <td>${stamp(h.created_at)}</td>
+      <td>${dash(h.source)}</td>
+      <td class="num cpc-muted">${h.was === null ? '—' : euro(h.was)}</td>
+      <td class="num ${changed ? 'cpc' : 'cpc-muted'}">${euro(h.cost_per_click_cents)}</td>
+      <td>${dash(h.changed_by)}</td>
+      <td>${dash(h.reason)}</td>
+      <td class="muted">${dash(h.change_type)}</td>
+    </tr>`;
+  }).join('');
   $('history-empty').hidden = history.length > 0;
   $('history-count').textContent = `${history.length} event${history.length === 1 ? '' : 's'}`;
 }
@@ -201,7 +253,7 @@ function openOverride(row) {
   const { min_cents, max_cents } = state.limits;
 
   $('override-title').textContent = row.is_override ? 'Edit CPC override' : 'Set CPC override';
-  $('override-sub').textContent = `${row.source_name} · ${state.job?.job_title || ''}`.trim();
+  $('override-sub').textContent = `${row.source} · ${state.job?.job_title || ''}`.trim();
   $('override-algo').textContent = euro(row.algorithmic_cpc_cents);
   $('override-hint').textContent =
     `Allowed range ${euro(min_cents)} – ${euro(max_cents)}.` +
@@ -272,7 +324,7 @@ function submitOverride() {
 
   appsmith.triggerEvent('onSaveOverride', {
     jobId: state.job?.job_id,
-    source: state.target?.source_name,
+    source: state.target?.source,
     cpcCents: cents,
     previousCents: state.target?.cost_per_click_cents ?? null,
     reason,
@@ -284,7 +336,7 @@ function submitOverride() {
 
 function openRevert(row) {
   state.target = row;
-  $('revert-sub').textContent = `${row.source_name} · ${state.job?.job_title || ''}`.trim();
+  $('revert-sub').textContent = `${row.source} · ${state.job?.job_title || ''}`.trim();
   $('revert-current').textContent = euro(row.cost_per_click_cents);
   $('revert-algo').textContent = euro(row.algorithmic_cpc_cents);
   $('revert-reason').value = '';
@@ -299,7 +351,7 @@ function submitRevert() {
 
   appsmith.triggerEvent('onRemoveOverride', {
     jobId: state.job?.job_id,
-    source: state.target?.source_name,
+    source: state.target?.source,
     algorithmicCents: state.target?.algorithmic_cpc_cents ?? null,
     reason,
   });

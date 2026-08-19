@@ -20,15 +20,16 @@
         <span>Job ID</span>
         <div class="input-wrap">
           <span class="input-ico">&#128269;</span>
-          <input id="search-input" type="text" placeholder="e.g. 8f3c1a2e-… or 481920" />
+          <input id="search-input" type="text" inputmode="numeric" placeholder="e.g. 34052274" />
         </div>
       </label>
       <label class="field">
-        <span>Status</span>
+        <span>Show</span>
         <select id="filter-status">
-          <option value="all">All sources</option>
+          <option value="active">Active sources</option>
           <option value="override">Overridden only</option>
-          <option value="algorithmic">Algorithmic only</option>
+          <option value="priced">Priced sources</option>
+          <option value="all">All sources</option>
         </select>
       </label>
       <button class="btn btn-primary" id="search-btn" type="submit">Search</button>
@@ -119,10 +120,11 @@
             <tr>
               <th>When</th>
               <th>Source</th>
-              <th class="num">Old</th>
-              <th class="num">New</th>
+              <th class="num">Was</th>
+              <th class="num">Became</th>
               <th>Changed by</th>
               <th>Reason</th>
+              <th>Change</th>
             </tr>
           </thead>
           <tbody id="history-body"></tbody>
