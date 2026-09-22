@@ -1636,9 +1636,37 @@ function bindEvents() {
   });
 }
 
+/**
+ * Re-render whenever the model actually changes.
+ *
+ * `appsmith.onReady` fires on load, but whether it also fires on every model update is
+ * version-dependent — and a missed update is indistinguishable from a query that never
+ * ran. Comparing a cheap signature removes that whole class of uncertainty; nothing
+ * re-renders unless something really changed.
+ */
+function watchModel() {
+  let last = null;
+  setInterval(() => {
+    const m = model();
+    const op = m.operation || {};
+    const sig = [
+      m.user || '',
+      (m.companies || []).length,
+      m.jobsData ? `${(m.jobsData.jobs || []).length}/${(m.jobsData.rejected || []).length}` : '-',
+      m.submit ? m.submit.at : '-',
+      op.id ? `${op.id}:${op.status}:${(op.meta_data || {}).applied_count}` : '-',
+      m.history ? `${(m.history.data || []).length}:${m.history.page}` : '-',
+    ].join('|');
+    if (sig === last) return;
+    last = sig;
+    render(m);
+  }, 300);
+}
+
 appsmith.onReady(() => {
   bindEvents();
   render(model());
+  watchModel();
 });
 
 </script>

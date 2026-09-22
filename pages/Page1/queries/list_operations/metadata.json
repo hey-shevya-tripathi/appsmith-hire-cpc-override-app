@@ -25,7 +25,11 @@
       "queryParameters": [
         {
           "key": "page",
-          "value": "{{ appsmith.store.cpc_history_page || 1 }}<br>per_page = 20"
+          "value": "{{ appsmith.store.cpc_history_page || 1 }}"
+        },
+        {
+          "key": "per_page",
+          "value": "20"
         }
       ],
       "timeoutInMillisecond": 10000

@@ -39,7 +39,7 @@
     ],
     "name": "poll_operation",
     "pageId": "Page1",
-    "runBehaviour": "AUTOMATIC",
+    "runBehaviour": "MANUAL",
     "userSetOnLoad": false
   }
 }

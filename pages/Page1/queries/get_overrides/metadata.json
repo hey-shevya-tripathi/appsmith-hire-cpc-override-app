@@ -16,7 +16,7 @@
       "httpMethod": "GET",
       "httpVersion": "HTTP11",
       "paginationType": "NONE",
-      "path": "cpc_overrides{{ (appsmith.store.cpc_job_query && appsmith.store.cpc_job_query.company_id) ? 'company_id=' + appsmith.store.cpc_job_query.company_id : 'job_ids=' + ((appsmith.store.cpc_job_query && appsmith.store.cpc_job_query.job_ids) || '') }}",
+      "path": "cpc_overrides?{{ (appsmith.store.cpc_job_query && appsmith.store.cpc_job_query.company_id) ? 'company_id=' + appsmith.store.cpc_job_query.company_id : 'job_ids=' + ((appsmith.store.cpc_job_query && appsmith.store.cpc_job_query.job_ids) || '') }}",
       "pluginSpecifiedTemplates": [
         {
           "value": true
@@ -39,7 +39,7 @@
     ],
     "name": "get_overrides",
     "pageId": "Page1",
-    "runBehaviour": "AUTOMATIC",
+    "runBehaviour": "MANUAL",
     "userSetOnLoad": false
   }
 }
