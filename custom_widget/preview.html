@@ -85,6 +85,25 @@ body, .app {
 .hint { color: var(--faint); font-size: 11.5px; margin: 8px 0 0; }
 .hint.is-error { color: var(--danger); font-weight: 500; }
 
+.results-for { margin: -10px 0 14px; font-size: 12px; color: var(--muted); }
+
+.loading-card { display: flex; align-items: center; gap: 10px; }
+.spinner {
+  width: 15px; height: 15px; flex: none; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Results no longer match what is typed in the search box. */
+.stale-note {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px; padding: 9px 13px;
+  background: var(--warn-soft); border: 1px solid #f0dcbb;
+  border-radius: var(--radius-sm); font-size: 12.5px; color: var(--warn);
+}
+.is-stale .tbl tbody { opacity: .5; }
+
 .empty { text-align: center; padding: 40px 20px; }
 .empty-title { margin: 0 0 4px; font-weight: 600; }
 .empty p { margin: 0; }
@@ -386,11 +405,25 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
       <p class="hint" id="finder-hint" hidden></p>
     </section>
 
+    <!-- Loading -->
+    <section class="card loading-card" id="results-loading" hidden>
+      <span class="spinner"></span>
+      <span class="muted">Loading jobs…</span>
+    </section>
+
     <!-- Results -->
     <section class="card" id="results-card" hidden>
       <div class="card-head">
-        <h2 class="card-title">Results — one row per job</h2>
+        <div>
+          <h2 class="card-title">Results — one row per job</h2>
+          <p class="results-for" id="results-for">—</p>
+        </div>
         <span class="muted" id="results-count">—</span>
+      </div>
+
+      <div class="stale-note" id="stale-note" hidden>
+        <span id="stale-text">—</span>
+        <button class="btn-link" id="stale-clear" type="button">Clear results</button>
       </div>
 
       <div class="table-wrap">
@@ -858,6 +891,7 @@ function setMode(mode) {
   $('finder-company').hidden = mode !== 'company';
   $('finder-ids').hidden = mode !== 'ids';
   $('finder-hint').hidden = true;
+  renderStale();
 }
 
 /* ── Company typeahead ───────────────────────────────────── */
@@ -869,6 +903,7 @@ function onCompanyInput() {
   state.company = null;
   $('load-company').disabled = true;
   clearTimeout(companyDebounce);
+  renderStale();
   if (!q) { $('company-list').hidden = true; return; }
   companyDebounce = setTimeout(() => {
     patchModel({ companyQuery: q });
@@ -896,15 +931,53 @@ function pickCompany(company) {
   $('company-input').value = `${company.company_id} — ${company.name}`;
   $('company-list').hidden = true;
   $('load-company').disabled = false;
+  renderStale();
 }
 
 /* ── Loading jobs ────────────────────────────────────────── */
 
-function loadByCompany() {
-  if (!state.company) return;
+/**
+ * What the search box currently describes, as a comparable key plus a label.
+ * `key` is compared against the results on screen so stale rows can be flagged.
+ */
+function currentSearch() {
+  if (state.mode === 'company') {
+    if (state.company) {
+      return {
+        key: `company:${state.company.company_id}`,
+        label: `${state.company.name} · company ${state.company.company_id}`,
+      };
+    }
+    // Typed but nothing picked yet — still enough to know the rows on screen are stale.
+    const typed = $('company-input').value.trim();
+    if (typed) return { key: `typing:${typed}`, label: `“${typed}”`, pending: true };
+    return null;
+  }
+  const ids = parseJobIds($('ids-input').value);
+  if (!ids.length) return null;
+  return {
+    key: `ids:${ids.join(',')}`,
+    label: `${ids.length} pasted job ID${ids.length === 1 ? '' : 's'}`,
+  };
+}
+
+/** Wipe the grid so a previous company's jobs can never be read as the new one's. */
+function beginLoad(search, jobQuery) {
   resetResults();
-  patchModel({ jobQuery: { company_id: state.company.company_id } });
-  fire('onLoadJobs', { company_id: state.company.company_id });
+  state.jobs = [];
+  state.rejected = [];
+  state.loaded = search;
+  state.awaiting = true;
+  state.cleared = false;
+  renderJobs();
+  patchModel({ jobQuery });
+  fire('onLoadJobs', jobQuery);
+}
+
+function loadByCompany() {
+  const search = currentSearch();
+  if (!search) return;
+  beginLoad(search, { company_id: state.company.company_id });
 }
 
 /** Accepts commas, spaces or new lines; keeps order, drops duplicates. */
@@ -942,9 +1015,19 @@ function loadByIds() {
     return;
   }
   hint.hidden = true;
+  beginLoad(currentSearch(), { job_ids: ids.join(',') });
+}
+
+/** Drop the results entirely — used by the "Clear results" action on the stale note. */
+function clearResults() {
   resetResults();
-  patchModel({ jobQuery: { job_ids: ids.join(',') } });
-  fire('onLoadJobs', { job_ids: ids.join(',') });
+  state.jobs = [];
+  state.rejected = [];
+  state.loaded = null;
+  state.awaiting = false;
+  state.cleared = true;
+  patchModel({ jobQuery: null });
+  renderJobs();
 }
 
 function resetResults() {
@@ -963,12 +1046,36 @@ function overrideSummary(job) {
   ).join(' · ');
 }
 
+/**
+ * Flag results that no longer match the search box — a new company typed but not yet
+ * searched must never look like it produced the rows on screen.
+ */
+function renderStale() {
+  const note = $('stale-note');
+  const current = currentSearch();
+  const stale = Boolean(state.loaded && current && current.key !== state.loaded.key);
+
+  $('results-card').classList.toggle('is-stale', stale);
+  note.hidden = !stale;
+  if (stale) {
+    $('stale-text').textContent = current.pending
+      ? `These are still the results for ${state.loaded.label}. Pick a company from the list, then press Search.`
+      : `These are still the results for ${state.loaded.label}. Press Search to load ${current.label}.`;
+  }
+}
+
 function renderJobs() {
+  const loading = Boolean(state.awaiting);
   const hasJobs = state.jobs.length > 0;
   const anyResponse = hasJobs || state.rejected.length > 0;
 
-  $('results-card').hidden = !hasJobs;
-  $('results-empty').hidden = hasJobs || !anyResponse;
+  $('results-loading').hidden = !loading;
+  $('results-card').hidden = loading || !hasJobs;
+  $('results-empty').hidden = loading || hasJobs || !anyResponse;
+  if (loading) return;
+
+  $('results-for').textContent = state.loaded ? state.loaded.label : '—';
+  renderStale();
 
   if (state.rejected.length) {
     $('rejected-box').hidden = false;
@@ -1568,7 +1675,17 @@ function render(m) {
 
   renderCompanies(m.companies);
 
-  const data = m.jobsData || null;
+  // A cleared grid stays cleared: the query's data is still in the model and would
+  // otherwise be restored by the very next render.
+  const data = state.cleared ? null : (m.jobsData || null);
+  // Stay on the loading state until the query settles, so the previous search's rows
+  // are never on screen next to a different company's name.
+  if (m.jobsLoading) {
+    state.awaiting = true;
+  } else if (state.awaiting && data) {
+    state.awaiting = false;
+  }
+
   state.jobs = (data && Array.isArray(data.jobs)) ? data.jobs : [];
   state.rejected = (data && Array.isArray(data.rejected)) ? data.rejected : [];
   // Drop selections for jobs that are no longer in the grid.
@@ -1599,6 +1716,8 @@ function bindEvents() {
   $('company-input').addEventListener('input', onCompanyInput);
   $('load-company').addEventListener('click', loadByCompany);
   $('load-ids').addEventListener('click', loadByIds);
+  $('ids-input').addEventListener('input', renderStale);
+  $('stale-clear').addEventListener('click', clearResults);
 
   $('select-all').addEventListener('change', (e) => {
     state.selected.clear();
@@ -1644,14 +1763,17 @@ function bindEvents() {
  * ran. Comparing a cheap signature removes that whole class of uncertainty; nothing
  * re-renders unless something really changed.
  */
+let modelWatcher = null;
 function watchModel() {
+  if (modelWatcher) return;
   let last = null;
-  setInterval(() => {
+  modelWatcher = setInterval(() => {
     const m = model();
     const op = m.operation || {};
     const sig = [
       m.user || '',
       (m.companies || []).length,
+      m.jobsLoading ? 'L' : '-',
       m.jobsData ? `${(m.jobsData.jobs || []).length}/${(m.jobsData.rejected || []).length}` : '-',
       m.submit ? m.submit.at : '-',
       op.id ? `${op.id}:${op.status}:${(op.meta_data || {}).applied_count}` : '-',

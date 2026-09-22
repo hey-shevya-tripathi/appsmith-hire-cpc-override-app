@@ -43,11 +43,25 @@
       <p class="hint" id="finder-hint" hidden></p>
     </section>
 
+    <!-- Loading -->
+    <section class="card loading-card" id="results-loading" hidden>
+      <span class="spinner"></span>
+      <span class="muted">Loading jobs…</span>
+    </section>
+
     <!-- Results -->
     <section class="card" id="results-card" hidden>
       <div class="card-head">
-        <h2 class="card-title">Results — one row per job</h2>
+        <div>
+          <h2 class="card-title">Results — one row per job</h2>
+          <p class="results-for" id="results-for">—</p>
+        </div>
         <span class="muted" id="results-count">—</span>
+      </div>
+
+      <div class="stale-note" id="stale-note" hidden>
+        <span id="stale-text">—</span>
+        <button class="btn-link" id="stale-clear" type="button">Clear results</button>
       </div>
 
       <div class="table-wrap">
