@@ -205,7 +205,9 @@ function onCompanyInput() {
 
 function renderCompanies(companies) {
   const list = $('company-list');
-  if (!Array.isArray(companies) || !companies.length || state.company) {
+  const typing = $('company-input').value.trim().length > 0;
+  // `typing` guards against persisted results dropping the list open on a fresh load.
+  if (!Array.isArray(companies) || !companies.length || state.company || !typing) {
     list.hidden = true;
     return;
   }
@@ -260,7 +262,6 @@ function beginLoad(search, jobQuery) {
   state.rejected = [];
   state.loaded = search;
   state.awaiting = true;
-  state.cleared = false;
   renderJobs();
   patchModel({ jobQuery });
   fire('onLoadJobs', jobQuery);
@@ -317,7 +318,6 @@ function clearResults() {
   state.rejected = [];
   state.loaded = null;
   state.awaiting = false;
-  state.cleared = true;
   patchModel({ jobQuery: null });
   renderJobs();
 }
@@ -983,9 +983,11 @@ function render(m) {
 
   renderCompanies(m.companies);
 
-  // A cleared grid stays cleared: the query's data is still in the model and would
-  // otherwise be restored by the very next render.
-  const data = state.cleared ? null : (m.jobsData || null);
+  // Results are only shown for a search made in this session. appsmith.store survives
+  // a page reload, so the query happily re-runs on load with the previous search still
+  // in it; state.loaded is the only honest signal that the user actually asked for
+  // these rows. It also keeps a cleared grid cleared.
+  const data = state.loaded ? (m.jobsData || null) : null;
   // Stay on the loading state until the query settles, so the previous search's rows
   // are never on screen next to a different company's name.
   if (m.jobsLoading) {
