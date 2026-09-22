@@ -231,15 +231,18 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
 }
 
 /* ── Modal & sheet ───────────────────────────────────────── */
+/* The widget renders in a tall iframe, so `position: fixed` is relative to the iframe
+   rather than the browser window. Centring therefore drops the dialog far below the
+   fold — anchor it to the top instead, where the user is already looking. */
 .modal {
-  position: fixed; inset: 0; z-index: 100; padding: 24px;
+  position: fixed; inset: 0; z-index: 100; padding: 20px;
   background: rgba(22, 18, 26, .48);
-  display: none; align-items: center; justify-content: center;
+  display: none; align-items: flex-start; justify-content: center;
 }
 .modal.is-open { display: flex; animation: fade .14s ease; }
 .sheet {
   background: var(--card); border-radius: var(--radius);
-  width: 100%; max-width: 680px; max-height: 88vh;
+  width: 100%; max-width: 680px; max-height: min(86vh, 660px);
   display: flex; flex-direction: column;
   box-shadow: var(--shadow-lg); animation: rise .18s cubic-bezier(.2,.8,.3,1);
 }

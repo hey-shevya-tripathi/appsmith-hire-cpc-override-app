@@ -238,15 +238,18 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
 }
 
 /* ── Modal & sheet ───────────────────────────────────────── */
+/* The widget renders in a tall iframe, so `position: fixed` is relative to the iframe
+   rather than the browser window. Centring therefore drops the dialog far below the
+   fold — anchor it to the top instead, where the user is already looking. */
 .modal {
-  position: fixed; inset: 0; z-index: 100; padding: 24px;
+  position: fixed; inset: 0; z-index: 100; padding: 20px;
   background: rgba(22, 18, 26, .48);
-  display: none; align-items: center; justify-content: center;
+  display: none; align-items: flex-start; justify-content: center;
 }
 .modal.is-open { display: flex; animation: fade .14s ease; }
 .sheet {
   background: var(--card); border-radius: var(--radius);
-  width: 100%; max-width: 680px; max-height: 88vh;
+  width: 100%; max-width: 680px; max-height: min(86vh, 660px);
   display: flex; flex-direction: column;
   box-shadow: var(--shadow-lg); animation: rise .18s cubic-bezier(.2,.8,.3,1);
 }
@@ -1183,7 +1186,7 @@ function openEditor() {
   $('edit-error').hidden = true;
 
   renderEditor();
-  $('editor-modal').classList.add('is-open');
+  openModal('editor-modal');
 }
 
 function renderEditor() {
@@ -1326,6 +1329,22 @@ function renderSummary() {
   $('apply').disabled = total > MAX_ITEMS;
 }
 
+/**
+ * Open a dialog and make sure it is actually on screen.
+ *
+ * The dialog is pinned to the top of the widget's iframe, but the iframe itself may be
+ * scrolled out of view in the host page. scrollIntoView on our own root scrolls the
+ * host, so the dialog lands where the user can see it.
+ */
+function openModal(id) {
+  $(id).classList.add('is-open');
+  try {
+    $('app').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    /* older engines ignore the options object; the dialog is still positioned */
+  }
+}
+
 function closeEditor() { $('editor-modal').classList.remove('is-open'); }
 
 /* ── Submitting ──────────────────────────────────────────── */
@@ -1428,7 +1447,7 @@ function applyItemErrors(errors) {
   closeRun();
   state.run = null;
   state.queue = [];
-  $('editor-modal').classList.add('is-open');
+  openModal('editor-modal');
   renderEditor();
 
   const box = $('edit-error');
@@ -1494,7 +1513,7 @@ function openRun() {
   $('run-retry').hidden = true;
   $('run-failed-wrap').hidden = true;
   $('run-failed-note').hidden = true;
-  $('run-modal').classList.add('is-open');
+  openModal('run-modal');
 }
 
 function closeRun() { $('run-modal').classList.remove('is-open'); stopPolling(); }

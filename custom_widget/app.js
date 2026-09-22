@@ -475,7 +475,7 @@ function openEditor() {
   $('edit-error').hidden = true;
 
   renderEditor();
-  $('editor-modal').classList.add('is-open');
+  openModal('editor-modal');
 }
 
 function renderEditor() {
@@ -618,6 +618,22 @@ function renderSummary() {
   $('apply').disabled = total > MAX_ITEMS;
 }
 
+/**
+ * Open a dialog and make sure it is actually on screen.
+ *
+ * The dialog is pinned to the top of the widget's iframe, but the iframe itself may be
+ * scrolled out of view in the host page. scrollIntoView on our own root scrolls the
+ * host, so the dialog lands where the user can see it.
+ */
+function openModal(id) {
+  $(id).classList.add('is-open');
+  try {
+    $('app').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    /* older engines ignore the options object; the dialog is still positioned */
+  }
+}
+
 function closeEditor() { $('editor-modal').classList.remove('is-open'); }
 
 /* ── Submitting ──────────────────────────────────────────── */
@@ -720,7 +736,7 @@ function applyItemErrors(errors) {
   closeRun();
   state.run = null;
   state.queue = [];
-  $('editor-modal').classList.add('is-open');
+  openModal('editor-modal');
   renderEditor();
 
   const box = $('edit-error');
@@ -786,7 +802,7 @@ function openRun() {
   $('run-retry').hidden = true;
   $('run-failed-wrap').hidden = true;
   $('run-failed-note').hidden = true;
-  $('run-modal').classList.add('is-open');
+  openModal('run-modal');
 }
 
 function closeRun() { $('run-modal').classList.remove('is-open'); stopPolling(); }
