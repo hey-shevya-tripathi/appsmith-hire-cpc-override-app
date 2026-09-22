@@ -1,0 +1,967 @@
+// HIRE CPC Override — Appsmith custom widget
+// Built against the mkt_backend Appsmith API v1 spec (MTI-1753).
+//
+// Default Model (see README for the exact binding):
+//   user            string                     signed-in email
+//   companies       [{company_id, name}]       GET /cpc_override_companies
+//   jobsData        {jobs, rejected}           GET /cpc_overrides
+//   jobsLoading     bool
+//   submit          {ok, data|error}           POST result, via appsmith.store
+//   operation       {...}                      GET /cpc_override_operations/:id
+//   history         {data, total, page, per_page}
+//
+// Events (each handler snapshots the model into appsmith.store, then runs its query):
+//   onSearchCompanies   reads model.companyQuery
+//   onLoadJobs          reads model.jobQuery  -> {company_id} | {job_ids}
+//   onSubmit            reads model.pendingPayload
+//   onPoll              reads model.pollOperationId
+//   onLoadHistory       reads model.historyPage
+//
+// The API is CPC-only (integer cents) and one action per operation — see README
+// "Where this differs from the wireframe".
+
+const $ = (id) => document.getElementById(id);
+
+// No endpoint lists overridable sources, so this mirrors the bounds table in §6.3 of
+// the technical plan. Bounds themselves are deliberately NOT held here — the API
+// returns the live range on a 422. See README for the endpoint we've asked for.
+const SOURCES = [
+  'adzuna', 'allthetopbananas', 'bebee', 'bild', 'careerbuilder_premium', 'jobijoba',
+  'jobkicks', 'joblift', 'jobmesh', 'jobrapido', 'jobsora', 'jobted', 'jobtome',
+  'jobvector', 'jobworld', 'jooble', 'meinestadt', 'neuvoo', 'opportuno',
+  'stellenonline', 'studysmarter', 'talent_platform', 'tideri', 'womenforhire', 'xing',
+];
+
+const POLL_MS = 2500;
+const POLL_CEILING_MS = 5 * 60 * 1000;
+const MAX_ITEMS = 2000;
+const MAX_JOB_IDS = 500;
+
+const FINAL = ['completed', 'completed_with_errors', 'failed'];
+
+const FAILURE_TEXT = {
+  no_campaign: 'No campaign on that source',
+  no_override: 'No live override to remove',
+  no_default: 'No default price for the source',
+  job_not_hire: 'Job is no longer HIRE',
+  job_not_published: 'Job is no longer published',
+  job_not_found: 'Job no longer exists',
+  invalid: 'Price failed a check at apply time',
+  conflict: 'Changed by another operation — retry',
+  exception: 'Backend error — quote the operation ID',
+  unprocessed: 'Not processed — quote the operation ID',
+};
+
+const ITEM_ERROR_TEXT = {
+  duplicate_pair: 'Duplicate job and source',
+  job_not_found: 'Job not found',
+  job_not_hire: 'Not a HIRE job',
+  job_not_published: 'Job is not published',
+  job_without_country: 'Job has no country, so no price range applies',
+  cpc_cents_missing: 'A price is required',
+  source_not_cpc: 'This source is not priced per click here',
+  no_bounds: 'No price range configured for this source yet',
+  cpc_out_of_bounds: 'Outside the allowed range',
+  cpc_cents_not_allowed: 'A removal must not carry a price',
+};
+
+const REJECT_TEXT = {
+  not_found: 'no such job, or deleted',
+  not_hire: 'not a HIRE job',
+  not_published: 'not published right now',
+};
+
+const state = {
+  bound: false,
+  tab: 'overrides',
+  mode: 'company',
+  company: null,
+  jobs: [],
+  rejected: [],
+  selected: new Set(),
+  staged: new Map(),      // source -> { source, cpcCents, drop, isNew }
+  itemErrors: new Map(),  // "jobId|source" -> { reason, min_cents, max_cents }
+  queue: [],              // operations still to submit
+  run: null,              // { phase, submitted, applied, results }
+  pollTimer: null,
+  pollStarted: 0,
+  historyPage: 1,
+  lastSubmitKey: null,
+};
+
+/* ── Small helpers ───────────────────────────────────────── */
+
+const model = () => (typeof appsmith !== 'undefined' && appsmith.model) || {};
+
+function esc(v) {
+  if (v === null || v === undefined || v === '') return '';
+  return String(v).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const dash = (v) => (v === null || v === undefined || v === '' ? '—' : esc(v));
+
+/** Integer cents, or null when the field is blank or not a whole number. */
+function cents(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function euro(c) {
+  const n = Number(c);
+  return Number.isFinite(n) ? `€${(n / 100).toFixed(2)}` : '—';
+}
+
+function when(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return esc(value);
+  return d.toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+const pairKey = (jobId, source) => `${jobId}|${source}`;
+
+/** Write to the model without echoing back keys the Default Model bindings own. */
+const BOUND_KEYS = ['user', 'companies', 'jobsData', 'jobsLoading', 'submit', 'operation', 'history'];
+function patchModel(patch) {
+  const carried = { ...model() };
+  BOUND_KEYS.forEach((k) => delete carried[k]);
+  try {
+    if (appsmith.updateModel) appsmith.updateModel({ ...carried, ...patch });
+  } catch (err) {
+    console.error('updateModel failed', err);
+  }
+}
+
+function fire(event, payload) {
+  try {
+    if (appsmith.triggerEvent) appsmith.triggerEvent(event, payload);
+  } catch (err) {
+    console.error(`triggerEvent ${event} failed`, err);
+  }
+}
+
+let toastTimer = null;
+function toast(text, isError) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.toggle('is-error', Boolean(isError));
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3400);
+}
+
+/** RFC4122-ish v4, good enough for an idempotency key. */
+function uuid() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/* ── Tabs & finder mode ──────────────────────────────────── */
+
+function setTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.classList.toggle('is-active', t.dataset.tab === tab);
+  });
+  $('tab-overrides').hidden = tab !== 'overrides';
+  $('tab-audit').hidden = tab !== 'audit';
+  if (tab === 'audit') loadHistory(state.historyPage);
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('is-active', b.dataset.mode === mode);
+  });
+  $('finder-company').hidden = mode !== 'company';
+  $('finder-ids').hidden = mode !== 'ids';
+  $('finder-hint').hidden = true;
+}
+
+/* ── Company typeahead ───────────────────────────────────── */
+
+let companyDebounce = null;
+
+function onCompanyInput() {
+  const q = $('company-input').value.trim();
+  state.company = null;
+  $('load-company').disabled = true;
+  clearTimeout(companyDebounce);
+  if (!q) { $('company-list').hidden = true; return; }
+  companyDebounce = setTimeout(() => {
+    patchModel({ companyQuery: q });
+    fire('onSearchCompanies', { q });
+  }, 250);
+}
+
+function renderCompanies(companies) {
+  const list = $('company-list');
+  if (!Array.isArray(companies) || !companies.length || state.company) {
+    list.hidden = true;
+    return;
+  }
+  list.innerHTML = companies.map((c, i) =>
+    `<li data-i="${i}"><span>${esc(c.name)}</span> <span class="cid">${esc(c.company_id)}</span></li>`
+  ).join('');
+  list.hidden = false;
+  list.querySelectorAll('li').forEach((li) => {
+    li.addEventListener('click', () => pickCompany(companies[Number(li.dataset.i)]));
+  });
+}
+
+function pickCompany(company) {
+  state.company = company;
+  $('company-input').value = `${company.company_id} — ${company.name}`;
+  $('company-list').hidden = true;
+  $('load-company').disabled = false;
+}
+
+/* ── Loading jobs ────────────────────────────────────────── */
+
+function loadByCompany() {
+  if (!state.company) return;
+  resetResults();
+  patchModel({ jobQuery: { company_id: state.company.company_id } });
+  fire('onLoadJobs', { company_id: state.company.company_id });
+}
+
+/** Accepts commas, spaces or new lines; keeps order, drops duplicates. */
+function parseJobIds(raw) {
+  const seen = new Set();
+  const ids = [];
+  String(raw).split(/[\s,]+/).forEach((token) => {
+    const t = token.trim();
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    ids.push(t);
+  });
+  return ids;
+}
+
+function loadByIds() {
+  const ids = parseJobIds($('ids-input').value);
+  const hint = $('finder-hint');
+  if (!ids.length) {
+    hint.textContent = 'Paste at least one job ID.';
+    hint.classList.add('is-error');
+    hint.hidden = false;
+    return;
+  }
+  if (ids.some((id) => !/^\d+$/.test(id))) {
+    hint.textContent = 'Job IDs must be numbers.';
+    hint.classList.add('is-error');
+    hint.hidden = false;
+    return;
+  }
+  if (ids.length > MAX_JOB_IDS) {
+    hint.textContent = `${ids.length} IDs — the maximum is ${MAX_JOB_IDS}.`;
+    hint.classList.add('is-error');
+    hint.hidden = false;
+    return;
+  }
+  hint.hidden = true;
+  resetResults();
+  patchModel({ jobQuery: { job_ids: ids.join(',') } });
+  fire('onLoadJobs', { job_ids: ids.join(',') });
+}
+
+function resetResults() {
+  state.selected.clear();
+  state.staged.clear();
+  state.itemErrors.clear();
+}
+
+/* ── Job grid ────────────────────────────────────────────── */
+
+function overrideSummary(job) {
+  const list = Array.isArray(job.overrides) ? job.overrides : [];
+  if (!list.length) return '<span class="ov-none">— none</span>';
+  return list.map((o) =>
+    `<span class="ov-chip">${esc(o.source)} ${Number(o.cpc_cents)}¢</span>`
+  ).join(' · ');
+}
+
+function renderJobs() {
+  const hasJobs = state.jobs.length > 0;
+  const anyResponse = hasJobs || state.rejected.length > 0;
+
+  $('results-card').hidden = !hasJobs;
+  $('results-empty').hidden = hasJobs || !anyResponse;
+
+  if (state.rejected.length) {
+    $('rejected-box').hidden = false;
+    $('rejected-list').innerHTML = state.rejected.map((r) =>
+      `<li><span class="mono">${esc(r.job_id)}</span> — ${esc(REJECT_TEXT[r.reason] || r.reason)}</li>`
+    ).join('');
+  } else {
+    $('rejected-box').hidden = true;
+  }
+
+  if (!hasJobs) {
+    if (anyResponse) {
+      $('results-empty').hidden = false;
+      $('results-empty-text').textContent =
+        'None of those jobs can carry an override — see the reasons above.';
+    }
+    return;
+  }
+
+  $('results-count').textContent =
+    `${state.jobs.length} job${state.jobs.length === 1 ? '' : 's'}`;
+
+  $('jobs-body').innerHTML = state.jobs.map((job) => {
+    const checked = state.selected.has(job.job_id) ? 'checked' : '';
+    return `<tr class="is-pick" data-job="${esc(job.job_id)}">
+      <td class="pick"><input type="checkbox" data-job="${esc(job.job_id)}" ${checked} /></td>
+      <td class="mono">${esc(job.job_id)}</td>
+      <td>${dash(job.title)}</td>
+      <td><span class="pill pill-idle">${dash(job.status)}</span></td>
+      <td class="ov-summary">${overrideSummary(job)}</td>
+    </tr>`;
+  }).join('');
+
+  $('jobs-body').querySelectorAll('input[type="checkbox"]').forEach((box) => {
+    box.addEventListener('click', (e) => e.stopPropagation());
+    box.addEventListener('change', () => toggleJob(box.dataset.job, box.checked));
+  });
+  $('jobs-body').querySelectorAll('tr').forEach((tr) => {
+    tr.addEventListener('click', () => {
+      const box = tr.querySelector('input[type="checkbox"]');
+      box.checked = !box.checked;
+      toggleJob(tr.dataset.job, box.checked);
+    });
+  });
+
+  renderSelection();
+}
+
+function toggleJob(jobIdRaw, on) {
+  const job = state.jobs.find((j) => String(j.job_id) === String(jobIdRaw));
+  if (!job) return;
+  if (on) state.selected.add(job.job_id);
+  else state.selected.delete(job.job_id);
+  renderSelection();
+}
+
+function renderSelection() {
+  const n = state.selected.size;
+  $('sel-count').textContent = `${n} job${n === 1 ? '' : 's'} selected`;
+  $('open-editor').disabled = n === 0;
+  const all = $('select-all');
+  all.checked = n > 0 && n === state.jobs.length;
+  all.indeterminate = n > 0 && n < state.jobs.length;
+}
+
+const selectedJobs = () => state.jobs.filter((j) => state.selected.has(j.job_id));
+
+/* ── Editor ──────────────────────────────────────────────── */
+
+/** Every source already overridden on at least one selected job, with its jobs. */
+function existingBySource() {
+  const map = new Map();
+  selectedJobs().forEach((job) => {
+    (job.overrides || []).forEach((o) => {
+      if (!map.has(o.source)) map.set(o.source, []);
+      map.get(o.source).push({ job_id: job.job_id, cpc_cents: o.cpc_cents });
+    });
+  });
+  return map;
+}
+
+function openEditor() {
+  const jobs = selectedJobs();
+  if (!jobs.length) return;
+
+  state.staged.clear();
+  state.itemErrors.clear();
+
+  existingBySource().forEach((entries, source) => {
+    const values = [...new Set(entries.map((e) => Number(e.cpc_cents)))];
+    state.staged.set(source, {
+      source,
+      // Jobs can disagree on the current price; leave it blank rather than pick one.
+      cpcCents: values.length === 1 ? values[0] : '',
+      drop: false,
+      isNew: false,
+      mixed: values.length > 1,
+    });
+  });
+
+  $('editor-sub').textContent = jobs.length === 1
+    ? `${jobs[0].job_id} · ${jobs[0].title || 'Untitled'}`
+    : `${jobs.length} jobs selected — every change below applies to all of them`;
+  $('reason').value = '';
+  $('edit-error').hidden = true;
+
+  renderEditor();
+  $('editor-modal').classList.add('is-open');
+}
+
+function renderEditor() {
+  const jobs = selectedJobs();
+  const existing = existingBySource();
+  const rows = [...state.staged.values()];
+
+  $('edit-body').innerHTML = rows.length ? rows.map((row) => {
+    const owners = existing.get(row.source) || [];
+    const appliesTo = row.drop ? owners.length : jobs.length;
+    const cls = row.drop ? 'row-drop' : (row.isNew ? 'row-new' : '');
+    const errs = jobs
+      .map((j) => state.itemErrors.get(pairKey(j.job_id, row.source)))
+      .filter(Boolean);
+    const err = errs[0];
+    const errText = err
+      ? (err.reason === 'cpc_out_of_bounds' && err.min_cents != null
+        ? `${ITEM_ERROR_TEXT.cpc_out_of_bounds} — allowed ${err.min_cents}–${err.max_cents}¢`
+        : (ITEM_ERROR_TEXT[err.reason] || err.reason))
+      : '';
+
+    const action = row.drop
+      ? `<button class="btn-link" data-act="keep" data-src="${esc(row.source)}">Keep</button>`
+      : (row.isNew
+        ? `<button class="btn-link is-danger" data-act="discard" data-src="${esc(row.source)}">Remove row</button>`
+        : `<button class="btn-link is-danger" data-act="drop" data-src="${esc(row.source)}">Remove override</button>`);
+
+    return `<tr class="${cls} ${err ? 'has-error' : ''}">
+      <td>
+        <span class="src-name">${esc(row.source)}</span>
+        ${row.drop ? '<span class="row-note">marked for removal</span>' : ''}
+        ${row.mixed && !row.drop ? '<span class="row-note">jobs differ — enter one value for all</span>' : ''}
+        ${errText ? `<span class="row-err">${esc(errText)}</span>` : ''}
+      </td>
+      <td class="num">
+        <input class="cpc-in" type="number" min="0" step="1" data-src="${esc(row.source)}"
+               value="${row.drop ? '' : esc(row.cpcCents)}" ${row.drop ? 'disabled' : ''} />
+      </td>
+      <td class="muted">${appliesTo} job${appliesTo === 1 ? '' : 's'}</td>
+      <td class="right">${action}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="4" class="muted" style="padding:18px 20px;">
+      No sources yet — add one below.</td></tr>`;
+
+  $('edit-body').querySelectorAll('.cpc-in').forEach((input) => {
+    input.addEventListener('input', () => {
+      const row = state.staged.get(input.dataset.src);
+      if (!row) return;
+      row.cpcCents = input.value;
+      row.mixed = false;
+      renderSummary();
+    });
+  });
+
+  $('edit-body').querySelectorAll('button[data-act]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const row = state.staged.get(btn.dataset.src);
+      if (!row) return;
+      if (btn.dataset.act === 'drop') row.drop = true;
+      else if (btn.dataset.act === 'keep') row.drop = false;
+      else state.staged.delete(btn.dataset.src);
+      renderEditor();
+    });
+  });
+
+  renderAddOptions();
+  renderSummary();
+}
+
+function renderAddOptions() {
+  const taken = new Set(state.staged.keys());
+  const options = SOURCES.filter((s) => !taken.has(s));
+  const select = $('add-source');
+  select.innerHTML = options.length
+    ? options.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('')
+    : '<option value="">All sources already listed</option>';
+  select.disabled = !options.length;
+  $('add-override').disabled = !options.length;
+}
+
+/**
+ * Expand the staged rows into flat API items, split by action — the API takes one
+ * action per operation, so sets and removals become separate operations.
+ */
+function buildItems() {
+  const jobs = selectedJobs();
+  const existing = existingBySource();
+  const setItems = [];
+  const removeItems = [];
+
+  state.staged.forEach((row) => {
+    if (row.drop) {
+      // Only jobs that actually carry the override — anything else is a guaranteed failure.
+      (existing.get(row.source) || []).forEach((owner) => {
+        removeItems.push({ job_id: owner.job_id, source: row.source });
+      });
+      return;
+    }
+    const value = cents(row.cpcCents);
+    if (value === null) return;   // blank rows are simply not staged
+    jobs.forEach((job) => {
+      const current = (existing.get(row.source) || [])
+        .find((o) => o.job_id === job.job_id);
+      // Skip pairs already sitting at this exact price — nothing would change.
+      if (current && Number(current.cpc_cents) === value) return;
+      setItems.push({ job_id: job.job_id, source: row.source, cpc_cents: value });
+    });
+  });
+
+  return { setItems, removeItems };
+}
+
+function renderSummary() {
+  const { setItems, removeItems } = buildItems();
+  const total = setItems.length + removeItems.length;
+  const box = $('edit-summary');
+  const blanks = [...state.staged.values()]
+    .filter((r) => !r.drop && cents(r.cpcCents) === null).length;
+
+  if (!total) {
+    box.className = 'summary is-idle';
+    box.textContent = blanks
+      ? 'Enter a price to stage a change.'
+      : 'Nothing staged yet — the values match what is already live.';
+    $('apply').disabled = true;
+    return;
+  }
+
+  const ops = (setItems.length ? 1 : 0) + (removeItems.length ? 1 : 0);
+  const parts = [];
+  if (setItems.length) parts.push(`${setItems.length} set`);
+  if (removeItems.length) parts.push(`${removeItems.length} removal${removeItems.length === 1 ? '' : 's'}`);
+
+  box.className = 'summary';
+  box.textContent =
+    `${parts.join(' + ')} = ${total} item${total === 1 ? '' : 's'} · ` +
+    `${ops} operation${ops === 1 ? '' : 's'}` +
+    (total > MAX_ITEMS ? ` — over the ${MAX_ITEMS} limit, reduce the selection` : '');
+
+  $('apply').disabled = total > MAX_ITEMS;
+}
+
+function closeEditor() { $('editor-modal').classList.remove('is-open'); }
+
+/* ── Submitting ──────────────────────────────────────────── */
+
+function apply() {
+  const reason = $('reason').value.trim();
+  const err = $('edit-error');
+  if (!reason) {
+    err.textContent = 'A reason is required on every change.';
+    err.hidden = false;
+    return;
+  }
+  const { setItems, removeItems } = buildItems();
+  if (!setItems.length && !removeItems.length) return;
+  if (setItems.length + removeItems.length > MAX_ITEMS) {
+    err.textContent = `That is ${setItems.length + removeItems.length} items — the limit is ${MAX_ITEMS}.`;
+    err.hidden = false;
+    return;
+  }
+  err.hidden = true;
+  state.itemErrors.clear();
+
+  const target = state.company
+    ? { type: 'company', company_id: state.company.company_id }
+    : { type: 'job_ids' };
+
+  state.queue = [];
+  if (setItems.length) state.queue.push({ action: 'set', items: setItems, reason, target });
+  if (removeItems.length) state.queue.push({ action: 'remove', items: removeItems, reason, target });
+
+  state.run = { phase: 'submitting', results: [], total: state.queue.length, index: 0 };
+  closeEditor();
+  openRun();
+  submitNext();
+}
+
+function submitNext() {
+  const next = state.queue.shift();
+  if (!next) { finishRun(); return; }
+
+  state.run.current = next;
+  state.run.index += 1;
+  state.lastSubmitKey = uuid();
+
+  const payload = {
+    action: next.action,
+    reason: next.reason,
+    requested_by: model().user || '',
+    idempotency_key: state.lastSubmitKey,
+    target: next.target,
+    items: next.items,
+  };
+
+  setRunStatus(
+    state.run.total > 1
+      ? `Submitting operation ${state.run.index} of ${state.run.total} — ${next.action}…`
+      : 'Submitting…',
+    null
+  );
+
+  patchModel({ pendingPayload: payload });
+  fire('onSubmit', { action: next.action, count: next.items.length });
+}
+
+/** POST came back — 202 starts polling, 422 reopens the editor with the bad rows marked. */
+function handleSubmitResult(result) {
+  if (!result || state.run?.phase !== 'submitting') return;
+
+  if (result.ok === false) {
+    const body = result.error && (result.error.body || result.error.data || result.error);
+    if (body && body.error === 'invalid_items' && Array.isArray(body.errors)) {
+      applyItemErrors(body.errors);
+      return;
+    }
+    failRun((body && (body.message || body.error)) || 'The request was rejected.');
+    return;
+  }
+
+  const op = result.data || result;
+  if (!op || !op.id) { failRun('No operation was returned.'); return; }
+
+  state.run.phase = 'polling';
+  state.run.operationId = op.id;
+  state.run.submitted = state.run.current.items;
+  startPolling(op.id);
+}
+
+/** Mark the offending rows and hand the user back to the editor — nothing was saved. */
+function applyItemErrors(errors) {
+  const items = state.run?.current?.items || [];
+  state.itemErrors.clear();
+  errors.forEach((e) => {
+    const item = e.index != null ? items[e.index] : null;
+    const jobId = e.job_id ?? item?.job_id;
+    const source = e.source ?? item?.source;
+    if (jobId == null || !source) return;
+    state.itemErrors.set(pairKey(jobId, source), e);
+  });
+
+  closeRun();
+  state.run = null;
+  state.queue = [];
+  $('editor-modal').classList.add('is-open');
+  renderEditor();
+
+  const box = $('edit-error');
+  box.textContent = `${errors.length} item${errors.length === 1 ? ' was' : 's were'} rejected. Nothing was saved.`;
+  box.hidden = false;
+}
+
+/* ── Polling ─────────────────────────────────────────────── */
+
+function startPolling(operationId) {
+  stopPolling();
+  state.pollStarted = Date.now();
+  const tick = () => {
+    if (Date.now() - state.pollStarted > POLL_CEILING_MS) {
+      stopPolling();
+      failRun('Still running after five minutes. Check the audit log for the final result.');
+      return;
+    }
+    patchModel({ pollOperationId: operationId });
+    fire('onPoll', { operation_id: operationId });
+  };
+  tick();
+  state.pollTimer = setInterval(tick, POLL_MS);
+}
+
+function stopPolling() {
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  state.pollTimer = null;
+}
+
+function handleOperation(op) {
+  if (!op || state.run?.phase !== 'polling') return;
+  if (String(op.id) !== String(state.run.operationId)) return;
+
+  const meta = op.meta_data || {};
+  const applied = Number(meta.applied_count);
+  const total = Number(meta.item_count) || state.run.submitted.length;
+
+  if (!FINAL.includes(op.status)) {
+    setRunStatus(
+      Number.isFinite(applied)
+        ? `${op.status} — ${applied} of ${total} applied`
+        : `${op.status}…`,
+      Number.isFinite(applied) && total ? applied / total : null
+    );
+    return;
+  }
+
+  stopPolling();
+  state.run.results.push({ op, submitted: state.run.submitted });
+  if (state.queue.length) { state.run.phase = 'submitting'; submitNext(); }
+  else finishRun();
+}
+
+/* ── Run modal ───────────────────────────────────────────── */
+
+function openRun() {
+  $('run-title').textContent = 'Applying changes';
+  $('run-progress').hidden = false;
+  $('run-result').hidden = true;
+  $('run-foot').hidden = true;
+  $('run-close').hidden = true;
+  $('run-retry').hidden = true;
+  $('run-failed-wrap').hidden = true;
+  $('run-failed-note').hidden = true;
+  $('run-modal').classList.add('is-open');
+}
+
+function closeRun() { $('run-modal').classList.remove('is-open'); stopPolling(); }
+
+function setRunStatus(text, ratio) {
+  $('run-status').textContent = text;
+  const bar = $('run-bar');
+  if (ratio === null || !Number.isFinite(ratio)) {
+    bar.classList.add('is-indeterminate');
+    bar.style.width = '18%';
+  } else {
+    bar.classList.remove('is-indeterminate');
+    bar.style.width = `${Math.max(6, Math.round(ratio * 100))}%`;
+  }
+}
+
+function failRun(message) {
+  stopPolling();
+  state.queue = [];
+  $('run-title').textContent = 'Could not apply';
+  $('run-progress').hidden = true;
+  $('run-result').hidden = false;
+  $('run-verdict').className = 'verdict bad';
+  $('run-verdict').textContent = message;
+  $('run-foot').hidden = false;
+  $('run-close').hidden = false;
+  state.run = null;
+}
+
+/** Pairs we sent minus pairs the API reports as applied. */
+function failedPairs(submitted, op) {
+  const appliedKeys = new Set(
+    (op.items || []).map((i) => pairKey(i.job_id, i.source))
+  );
+  return submitted.filter((i) => !appliedKeys.has(pairKey(i.job_id, i.source)));
+}
+
+function finishRun() {
+  stopPolling();
+  const results = state.run?.results || [];
+  if (!results.length) { closeRun(); state.run = null; return; }
+
+  let applied = 0;
+  let failed = 0;
+  const failRows = [];
+  const reasons = {};
+  let anyFailedStatus = false;
+
+  results.forEach(({ op, submitted }) => {
+    const meta = op.meta_data || {};
+    applied += Number(meta.applied_count) || (op.items || []).length;
+    failed += Number(meta.failed_count) || 0;
+    if (op.status === 'failed') anyFailedStatus = true;
+    Object.entries(meta.failures || {}).forEach(([k, v]) => {
+      reasons[k] = (reasons[k] || 0) + Number(v);
+    });
+    failedPairs(submitted, op).forEach((p) => failRows.push({ ...p, action: op.action }));
+  });
+
+  $('run-title').textContent = 'Result';
+  $('run-progress').hidden = true;
+  $('run-result').hidden = false;
+  $('run-foot').hidden = false;
+  $('run-close').hidden = false;
+
+  const verdict = $('run-verdict');
+  if (!failed && !anyFailedStatus) {
+    verdict.className = 'verdict ok';
+    verdict.innerHTML = `Completed — ${applied} item${applied === 1 ? '' : 's'} applied.`;
+  } else if (applied > 0) {
+    verdict.className = 'verdict warn';
+    verdict.innerHTML =
+      `Completed with errors — ${applied} applied, ${failed} failed.` +
+      `<small>Partial success. Retry only the failed pairs; re-running everything would apply the successful ones twice.</small>`;
+  } else {
+    verdict.className = 'verdict bad';
+    verdict.innerHTML = `Failed — nothing was applied.<small>Safe to run the whole thing again.</small>`;
+  }
+
+  if (failRows.length) {
+    $('run-failed-wrap').hidden = false;
+    $('run-failed-body').innerHTML = failRows.map((r) =>
+      `<tr><td class="mono">${esc(r.job_id)}</td><td>${esc(r.source)}</td>
+       <td class="muted">${esc(r.action)} did not apply</td></tr>`
+    ).join('');
+
+    const summary = Object.entries(reasons)
+      .map(([k, v]) => `${v}× ${FAILURE_TEXT[k] || k}`)
+      .join(' · ');
+    if (summary) {
+      $('run-failed-note').textContent = `Reported reasons: ${summary}.`;
+      $('run-failed-note').hidden = false;
+    }
+    state.retryRows = failRows;
+    $('run-retry').hidden = false;
+  }
+
+  state.run = null;
+  fire('onLoadJobs', lastJobQuery());   // refresh the grid against the new state
+}
+
+function lastJobQuery() {
+  const q = model().jobQuery;
+  return q || {};
+}
+
+function retryFailed() {
+  const rows = state.retryRows || [];
+  if (!rows.length) return;
+  const reason = `Retry of failed items — ${when(new Date().toISOString())}`;
+  const bySet = rows.filter((r) => r.action === 'set');
+  const byRemove = rows.filter((r) => r.action === 'remove');
+
+  // The submitted item carried the price; look it up again from the staged rows.
+  state.queue = [];
+  if (bySet.length) {
+    state.queue.push({
+      action: 'set', reason,
+      target: { type: 'job_ids' },
+      items: bySet.map((r) => ({ job_id: r.job_id, source: r.source, cpc_cents: r.cpc_cents })),
+    });
+  }
+  if (byRemove.length) {
+    state.queue.push({
+      action: 'remove', reason,
+      target: { type: 'job_ids' },
+      items: byRemove.map((r) => ({ job_id: r.job_id, source: r.source })),
+    });
+  }
+  state.run = { phase: 'submitting', results: [], total: state.queue.length, index: 0 };
+  openRun();
+  submitNext();
+}
+
+/* ── Audit log ───────────────────────────────────────────── */
+
+function loadHistory(page) {
+  state.historyPage = Math.max(1, page);
+  patchModel({ historyPage: state.historyPage });
+  fire('onLoadHistory', { page: state.historyPage });
+}
+
+function statusPill(status) {
+  const cls = status === 'completed' ? 'pill-ok'
+    : status === 'completed_with_errors' ? 'pill-warn'
+      : status === 'failed' ? 'pill-bad' : 'pill-idle';
+  return `<span class="pill ${cls}">${esc(status)}</span>`;
+}
+
+function renderHistory(history) {
+  const rows = (history && history.data) || [];
+  $('history-body').innerHTML = rows.length ? rows.map((op) => {
+    const meta = op.meta_data || {};
+    const count = meta.item_count ?? '—';
+    return `<tr>
+      <td class="muted">${when(op.created_at)}</td>
+      <td>${dash(op.requested_by)}</td>
+      <td>${dash(op.action)}</td>
+      <td class="num">${esc(count)}</td>
+      <td>${statusPill(op.status)}</td>
+      <td class="muted">${dash(op.reason)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" class="muted" style="padding:20px;">No operations yet.</td></tr>`;
+
+  const total = Number(history && history.total) || 0;
+  const per = Number(history && history.per_page) || 20;
+  const page = Number(history && history.page) || state.historyPage;
+  const pages = Math.max(1, Math.ceil(total / per));
+  $('history-page').textContent = `Page ${page} of ${pages} · ${total} operation${total === 1 ? '' : 's'}`;
+  $('history-prev').disabled = page <= 1;
+  $('history-next').disabled = page >= pages;
+}
+
+/* ── Render ──────────────────────────────────────────────── */
+
+function render(m) {
+  $('user-email').textContent = m.user || '—';
+
+  renderCompanies(m.companies);
+
+  const data = m.jobsData || null;
+  state.jobs = (data && Array.isArray(data.jobs)) ? data.jobs : [];
+  state.rejected = (data && Array.isArray(data.rejected)) ? data.rejected : [];
+  // Drop selections for jobs that are no longer in the grid.
+  state.selected.forEach((id) => {
+    if (!state.jobs.some((j) => j.job_id === id)) state.selected.delete(id);
+  });
+  renderJobs();
+
+  if (m.submit && m.submit !== state.lastSubmitSeen) {
+    state.lastSubmitSeen = m.submit;
+    handleSubmitResult(m.submit);
+  }
+  if (m.operation) handleOperation(m.operation);
+  renderHistory(m.history);
+}
+
+/* ── Wiring ──────────────────────────────────────────────── */
+
+function bindEvents() {
+  if (state.bound) return;
+  state.bound = true;
+
+  document.querySelectorAll('.tab').forEach((t) =>
+    t.addEventListener('click', () => setTab(t.dataset.tab)));
+  document.querySelectorAll('.seg-btn').forEach((b) =>
+    b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  $('company-input').addEventListener('input', onCompanyInput);
+  $('load-company').addEventListener('click', loadByCompany);
+  $('load-ids').addEventListener('click', loadByIds);
+
+  $('select-all').addEventListener('change', (e) => {
+    state.selected.clear();
+    if (e.target.checked) state.jobs.forEach((j) => state.selected.add(j.job_id));
+    renderJobs();
+  });
+
+  $('open-editor').addEventListener('click', openEditor);
+  $('editor-close').addEventListener('click', closeEditor);
+  $('editor-cancel').addEventListener('click', closeEditor);
+  $('apply').addEventListener('click', apply);
+
+  $('add-override').addEventListener('click', () => {
+    const source = $('add-source').value;
+    if (!source || state.staged.has(source)) return;
+    state.staged.set(source, { source, cpcCents: '', drop: false, isNew: true });
+    renderEditor();
+  });
+
+  $('run-done').addEventListener('click', () => { closeRun(); });
+  $('run-close').addEventListener('click', () => { closeRun(); });
+  $('run-retry').addEventListener('click', retryFailed);
+
+  $('history-refresh').addEventListener('click', () => loadHistory(state.historyPage));
+  $('history-prev').addEventListener('click', () => loadHistory(state.historyPage - 1));
+  $('history-next').addEventListener('click', () => loadHistory(state.historyPage + 1));
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.combo')) $('company-list').hidden = true;
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if ($('editor-modal').classList.contains('is-open')) closeEditor();
+    $('company-list').hidden = true;
+  });
+}
+
+appsmith.onReady(() => {
+  bindEvents();
+  render(model());
+});

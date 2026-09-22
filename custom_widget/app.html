@@ -1,0 +1,200 @@
+<div class="app" id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="topbar">
+    <span class="brand">HIRE CPC Override</span>
+    <span class="user" id="user-email">—</span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab is-active" data-tab="overrides" type="button">Overrides</button>
+    <button class="tab" data-tab="audit" type="button">Audit log</button>
+  </nav>
+
+  <!-- ══ Tab: Overrides ═════════════════════════════════════ -->
+  <div id="tab-overrides">
+
+    <!-- Find jobs -->
+    <section class="card">
+      <h2 class="card-title">Find published HIRE jobs</h2>
+
+      <div class="seg" id="mode-toggle">
+        <button class="seg-btn is-active" data-mode="company" type="button">By company</button>
+        <button class="seg-btn" data-mode="ids" type="button">Paste job IDs</button>
+      </div>
+
+      <!-- By company -->
+      <div class="finder" id="finder-company">
+        <div class="combo">
+          <input id="company-input" type="text" autocomplete="off"
+                 placeholder="Start typing a company name…" />
+          <ul class="combo-list" id="company-list" hidden></ul>
+        </div>
+        <button class="btn btn-primary" id="load-company" type="button" disabled>Search</button>
+      </div>
+
+      <!-- By job IDs -->
+      <div class="finder" id="finder-ids" hidden>
+        <textarea id="ids-input" rows="3"
+                  placeholder="37990001, 37990002 37990003 — commas, spaces or new lines. Max 500."></textarea>
+        <button class="btn btn-primary" id="load-ids" type="button">Search</button>
+      </div>
+
+      <p class="hint" id="finder-hint" hidden></p>
+    </section>
+
+    <!-- Results -->
+    <section class="card" id="results-card" hidden>
+      <div class="card-head">
+        <h2 class="card-title">Results — one row per job</h2>
+        <span class="muted" id="results-count">—</span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="tbl" id="jobs-table">
+          <thead>
+            <tr>
+              <th class="pick"><input type="checkbox" id="select-all" /></th>
+              <th>Job ID</th>
+              <th>Job title</th>
+              <th>Status</th>
+              <th>Existing overrides</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </div>
+
+      <div class="rejected" id="rejected-box" hidden>
+        <strong>Not loaded</strong>
+        <ul id="rejected-list"></ul>
+      </div>
+
+      <div class="selbar">
+        <span id="sel-count">0 jobs selected</span>
+        <button class="btn btn-primary" id="open-editor" type="button" disabled>Set overrides</button>
+      </div>
+    </section>
+
+    <section class="card empty" id="results-empty" hidden>
+      <p class="empty-title">No jobs to show</p>
+      <p class="muted" id="results-empty-text">Search for a company or paste job IDs above.</p>
+    </section>
+  </div>
+
+  <!-- ══ Tab: Audit log ═════════════════════════════════════ -->
+  <div id="tab-audit" hidden>
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Operations</h2>
+        <button class="btn btn-ghost btn-sm" id="history-refresh" type="button">Refresh</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="tbl" id="history-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>Action</th>
+              <th class="num">Items</th>
+              <th>Status</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <button class="btn btn-ghost btn-sm" id="history-prev" type="button">Previous</button>
+        <span class="muted" id="history-page">—</span>
+        <button class="btn btn-ghost btn-sm" id="history-next" type="button">Next</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══ Editor ═════════════════════════════════════════════ -->
+  <div class="modal" id="editor-modal">
+    <div class="sheet">
+      <header class="sheet-head">
+        <div>
+          <h2 class="sheet-title">Overrides</h2>
+          <p class="sheet-sub" id="editor-sub">—</p>
+        </div>
+        <button class="icon-btn" id="editor-close" type="button" aria-label="Close">&#10005;</button>
+      </header>
+
+      <div class="sheet-body">
+        <div class="table-wrap">
+          <table class="tbl tbl-edit">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th class="num">CPC (cents)</th>
+                <th>Applies to</th>
+                <th class="right"></th>
+              </tr>
+            </thead>
+            <tbody id="edit-body"></tbody>
+          </table>
+        </div>
+
+        <div class="add-row">
+          <select id="add-source"></select>
+          <button class="btn btn-ghost btn-sm" id="add-override" type="button">+ Add override</button>
+          <span class="hint">Sources already overridden on every selected job are not listed.</span>
+        </div>
+
+        <label class="field">
+          <span class="field-label">Reason — required on every change</span>
+          <textarea id="reason" rows="2"
+                    placeholder="e.g. Q4 push on warehouse roles"></textarea>
+        </label>
+
+        <div class="summary" id="edit-summary">Nothing staged yet.</div>
+        <div class="alert alert-error" id="edit-error" hidden></div>
+      </div>
+
+      <footer class="sheet-foot">
+        <button class="btn btn-ghost" id="editor-cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="apply" type="button" disabled>Apply overrides</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ══ Progress / result ══════════════════════════════════ -->
+  <div class="modal" id="run-modal">
+    <div class="sheet sheet-sm">
+      <header class="sheet-head">
+        <h2 class="sheet-title" id="run-title">Applying changes</h2>
+        <button class="icon-btn" id="run-close" type="button" aria-label="Close" hidden>&#10005;</button>
+      </header>
+
+      <div class="sheet-body">
+        <div id="run-progress">
+          <div class="bar"><div class="bar-fill" id="run-bar"></div></div>
+          <p class="muted" id="run-status">Submitting…</p>
+        </div>
+
+        <div id="run-result" hidden>
+          <div class="verdict" id="run-verdict"></div>
+          <div class="table-wrap" id="run-failed-wrap" hidden>
+            <table class="tbl tbl-compact">
+              <thead><tr><th>Job ID</th><th>Source</th><th>Outcome</th></tr></thead>
+              <tbody id="run-failed-body"></tbody>
+            </table>
+          </div>
+          <p class="hint" id="run-failed-note" hidden></p>
+        </div>
+      </div>
+
+      <footer class="sheet-foot" id="run-foot" hidden>
+        <button class="btn btn-ghost" id="run-done" type="button">Close</button>
+        <button class="btn btn-primary" id="run-retry" type="button" hidden>Retry failed</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
