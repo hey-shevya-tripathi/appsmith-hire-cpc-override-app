@@ -266,6 +266,8 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
 .tbl-edit tbody tr.row-drop .src-name,
 .tbl-edit tbody tr.row-drop .cpc-in { text-decoration: line-through; opacity: .65; }
 .tbl-edit .cpc-in { width: 92px; text-align: right; font-family: var(--mono); }
+.cpc-hint { display: block; margin-top: 3px; font-size: 10.5px; color: var(--muted); }
+.cpc-hint.is-bad { color: var(--danger); font-weight: 600; }
 .tbl-edit .src-name { font-weight: 600; }
 .row-note { font-size: 11px; color: var(--muted); display: block; }
 .tbl-edit tbody tr.has-error { box-shadow: inset 3px 0 0 var(--danger); }

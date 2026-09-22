@@ -513,6 +513,7 @@ function renderEditor() {
       <td class="num">
         <input class="cpc-in" type="number" min="0" step="1" data-src="${esc(row.source)}"
                value="${row.drop ? '' : esc(row.cpcCents)}" ${row.drop ? 'disabled' : ''} />
+        ${row.drop ? '' : '<span class="cpc-hint"></span>'}
       </td>
       <td class="muted">${appliesTo} job${appliesTo === 1 ? '' : 's'}</td>
       <td class="right">${action}</td>
@@ -521,11 +522,13 @@ function renderEditor() {
       No sources yet — add one below.</td></tr>`;
 
   $('edit-body').querySelectorAll('.cpc-in').forEach((input) => {
+    paintHint(input);
     input.addEventListener('input', () => {
       const row = state.staged.get(input.dataset.src);
       if (!row) return;
       row.cpcCents = input.value;
       row.mixed = false;
+      paintHint(input);
       renderSummary();
     });
   });
@@ -557,9 +560,30 @@ function renderAddOptions() {
 }
 
 /**
- * Expand the staged rows into flat API items, split by action — the API takes one
- * action per operation, so sets and removals become separate operations.
+ * What a typed price means, for the hint under the field. The API takes whole cents but
+ * people think in euros and type 0.9 meaning 90, so say what the number actually is.
  */
+function priceInfo(value) {
+  const raw = String(value === null || value === undefined ? '' : value).trim();
+  if (!raw) return { text: '', bad: false };
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return { text: 'Not a number', bad: true };
+  if (n < 0) return { text: 'Must be zero or more', bad: true };
+  if (!Number.isInteger(n)) {
+    return { text: `Whole cents only — type ${Math.round(n * 100)} for €${n.toFixed(2)}`, bad: true };
+  }
+  return { text: `= ${euro(n)}`, bad: false };
+}
+
+/** Repaint one row's hint without touching the rest of the table. */
+function paintHint(input) {
+  const el = input.parentElement && input.parentElement.querySelector('.cpc-hint');
+  if (!el) return;
+  const info = priceInfo(input.value);
+  el.textContent = info.text;
+  el.classList.toggle('is-bad', info.bad);
+}
+
 function buildItems() {
   const jobs = selectedJobs();
   const existing = existingBySource();
@@ -592,14 +616,18 @@ function renderSummary() {
   const { setItems, removeItems } = buildItems();
   const total = setItems.length + removeItems.length;
   const box = $('edit-summary');
-  const blanks = [...state.staged.values()]
-    .filter((r) => !r.drop && cents(r.cpcCents) === null).length;
+  const pending = [...state.staged.values()].filter((r) => !r.drop);
+  const invalid = pending.filter(
+    (r) => String(r.cpcCents).trim() !== '' && cents(r.cpcCents) === null).length;
+  const blanks = pending.filter((r) => String(r.cpcCents).trim() === '').length;
 
   if (!total) {
     box.className = 'summary is-idle';
-    box.textContent = blanks
-      ? 'Enter a price to stage a change.'
-      : 'Nothing staged yet — the values match what is already live.';
+    box.textContent = invalid
+      ? `${invalid} price${invalid === 1 ? ' needs' : 's need'} fixing — whole cents only, 90 means €0.90.`
+      : blanks
+        ? 'Enter a price to stage a change.'
+        : 'Nothing staged yet — the values match what is already live.';
     $('apply').disabled = true;
     return;
   }
